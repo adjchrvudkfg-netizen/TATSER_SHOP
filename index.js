@@ -1,13 +1,19 @@
 const express = require('express');
 const axios = require('axios');
-const config = require('./config'); // Aapka config file jisme TOKEN aur API details hain
+const config = require('./config');
 
-// Modules require karna
+// Saare modules ko require karna
 const shopModule = require('./shop');
 const addBalanceModule = require('./addBalance');
 const referralModule = require('./referral');
 const supportModule = require('./support');
-const adminApproval = require('./adminApproval');
+const adminApproval = require('./adminaproval');
+
+// Agar aapke paas yeh files hain toh inhe bhi link karein (optional safe checks ke sath)
+let profileModule, orderModule, ludoSpinModule;
+try { profileModule = require('./profile'); } catch (e) {}
+try { orderModule = require('./order'); } catch (e) {}
+try { ludoSpinModule = require('./ludospin'); } catch (e) {}
 
 const app = express();
 app.use(express.json());
@@ -15,18 +21,17 @@ app.use(express.json());
 const TOKEN = config.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_API = `https://api.telegram.org/bot${TOKEN}`;
 
-// In-memory Database (Users, Balances, etc.)
+// In-memory Database
 const db = {
   users: {}
 };
 
-// Helper: User data fetch ya create karne ke liye
 function getUser(userId, firstName) {
   if (!db.users[userId]) {
     db.users[userId] = {
       id: userId,
       name: firstName || "User",
-      balance: 0.00,
+      balance: 15.00, // Starting default bonus balance ya 0
       totalReferrals: 0,
       lifeTimeEarned: 0.00,
       totalPurchases: 0,
@@ -36,7 +41,43 @@ function getUser(userId, firstName) {
   return db.users[userId];
 }
 
-// Webhook / Message Endpoint
+// Main Menu Markup (Aapke screenshot 6503.png ke jaisa exact layout)
+function getMainMenuMarkup(user) {
+  const usdBal = (user.balance / config.CURRENCY_RATE).toFixed(2);
+  
+  const welcomeText = 
+`🌺 - <b>VETLAM PANEL SHOP</b> - 🌺
+
+🌸 Hello, <code>${user.name}</code> !
+
+🔑 <b>Premium digital keys, instant delivery.</b>
+
+➖ 🛒 <b>Wide product catalog</b>
+➖ ⚡ <b>Instant key delivery</b>
+➖ 💲 <b>Multiple payment gateways</b>
+➖ ☘️ <b>Referrals & spin-to-win</b>
+➖ 🆔 <b>24/7 admin support</b>
+
+──────────────────────
+👤 <b>User ID:</b> ${user.id}
+💰 <b>Wallet Balance:</b> ₹${user.balance.toFixed(2)} (~$${usdBal})
+──────────────────────`;
+
+  const reply_markup = {
+    inline_keyboard: [
+      [{ text: "🛍️ Shop", callback_data: "shop" }],
+      [{ text: "💳 Add Balance", callback_data: "add_balance" }, { text: "📦 My Orders", callback_data: "my_orders" }],
+      [{ text: "👤 My Profile", callback_data: "profile" }, { text: "▶️ How To Use", callback_data: "how_to_use" }],
+      [{ text: "🔗 Referral", callback_data: "referral" }, { text: "🎡 Daily Spin", callback_data: "daily_spin" }],
+      [{ text: "📞 Support", callback_data: "support" }],
+      [{ text: "💎 Selling Proof", url: "https://t.me/your_selling_proof" }, { text: "📊 Leaderboard", callback_data: "leaderboard" }]
+    ]
+  };
+
+  return { resText: welcomeText, reply_markup };
+}
+
+// Webhook Endpoint
 app.post(`/webhook/${TOKEN}`, async (req, res) => {
   res.sendStatus(200);
   const update = req.body;
@@ -48,7 +89,6 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
       const from = update.message.from;
       const user = getUser(from.id, from.first_name);
 
-      // /start command
       if (text.startsWith('/start')) {
         const args = text.split(' ');
         if (args.length > 1 && args[1].startsWith('ref_')) {
@@ -56,22 +96,12 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
           referralModule.handleNewReferral(from.id, referrerId, db.users);
         }
 
-        const welcomeText = 
-`👋 <b>Welcome to TATSER SHOP BOT!</b>
-
-Aap yahan se automated digital panels kharid sakte hain aur balance add kar sakte hain.`;
-
+        const menu = getMainMenuMarkup(user);
         await axios.post(`${TELEGRAM_API}/sendMessage`, {
           chat_id: chatId,
-          text: welcomeText,
+          text: menu.resText,
           parse_mode: "HTML",
-          reply_markup: {
-            inline_keyboard: [
-              [{ text: "🛒 Shop Panels", callback_data: "shop" }, { text: "💳 Add Balance", callback_data: "add_balance" }],
-              [{ text: "👤 My Profile", callback_data: "profile" }, { text: "🔗 Referral", callback_data: "referral" }],
-              [{ text: "📞 Support", callback_data: "support" }]
-            ]
-          }
+          reply_markup: menu.reply_markup
         });
       }
     } 
@@ -82,22 +112,15 @@ Aap yahan se automated digital panels kharid sakte hain aur balance add kar sakt
       const from = cq.from;
       const user = getUser(from.id, from.first_name);
 
-      // 1. Main Menu Navigation
       if (data === "main_menu") {
+        const menu = getMainMenuMarkup(user);
         await axios.post(`${TELEGRAM_API}/sendMessage`, {
           chat_id: chatId,
-          text: "🏠 <b>Main Menu:</b>",
+          text: menu.resText,
           parse_mode: "HTML",
-          reply_markup: {
-            inline_keyboard: [
-              [{ text: "🛒 Shop Panels", callback_data: "shop" }, { text: "💳 Add Balance", callback_data: "add_balance" }],
-              [{ text: "👤 My Profile", callback_data: "profile" }, { text: "🔗 Referral", callback_data: "referral" }],
-              [{ text: "📞 Support", callback_data: "support" }]
-            ]
-          }
+          reply_markup: menu.reply_markup
         });
       }
-      // 2. Shop & Panels
       else if (data === "shop") {
         const menu = shopModule.getShopMenu();
         await axios.post(`${TELEGRAM_API}/sendMessage`, {
@@ -117,11 +140,9 @@ Aap yahan se automated digital panels kharid sakte hain aur balance add kar sakt
           reply_markup: pkgMenu.reply_markup
         });
       }
-      // 3. Direct Purchase QR (Shop Items)
       else if (data.startsWith("buy_")) {
         await shopModule.handleDirectPurchaseQR(user, chatId, data, TELEGRAM_API);
       }
-      // 4. Add Balance Menu & Keypad
       else if (data === "add_balance") {
         const balanceMenu = addBalanceModule.getAddBalanceMenu(user.id);
         await axios.post(`${TELEGRAM_API}/sendMessage`, {
@@ -135,9 +156,8 @@ Aap yahan se automated digital panels kharid sakte hain aur balance add kar sakt
         if (data === "amt_confirm") {
           await addBalanceModule.generatePaymentQR(user, chatId, TELEGRAM_API, axios);
         } else {
-          const currentAmt = addBalanceModule.handleKeypadInput(user.id, data);
+          addBalanceModule.handleKeypadInput(user.id, data);
           const balanceMenu = addBalanceModule.getAddBalanceMenu(user.id);
-          // Update existing message with new amount
           await axios.post(`${TELEGRAM_API}/editMessageText`, {
             chat_id: chatId,
             message_id: cq.message.message_id,
@@ -147,7 +167,6 @@ Aap yahan se automated digital panels kharid sakte hain aur balance add kar sakt
           }).catch(() => {});
         }
       }
-      // 5. Referral Menu
       else if (data === "referral") {
         const refPage = referralModule.getReferralMenu(user);
         await axios.post(`${TELEGRAM_API}/sendMessage`, {
@@ -157,7 +176,6 @@ Aap yahan se automated digital panels kharid sakte hain aur balance add kar sakt
           reply_markup: refPage.reply_markup
         });
       }
-      // 6. Support Menu
       else if (data === "support") {
         const supportPage = supportModule.getSupportMenu();
         await axios.post(`${TELEGRAM_API}/sendMessage`, {
@@ -167,7 +185,47 @@ Aap yahan se automated digital panels kharid sakte hain aur balance add kar sakt
           reply_markup: supportPage.reply_markup
         });
       }
-      // 7. Payment Check / Admin Approval triggers
+      else if (data === "profile") {
+        const profileText = `👤 <b>USER PROFILE</b>\n\n🆔 ID: <code>${user.id}</code>\n👤 Name: ${user.name}\n💰 Balance: ₹${user.balance.toFixed(2)}`;
+        await axios.post(`${TELEGRAM_API}/sendMessage`, {
+          chat_id: chatId,
+          text: profileText,
+          parse_mode: "HTML",
+          reply_markup: { inline_keyboard: [[{ text: "🔙 Back", callback_data: "main_menu" }]] }
+        });
+      }
+      else if (data === "my_orders") {
+        await axios.post(`${TELEGRAM_API}/sendMessage`, {
+          chat_id: chatId,
+          text: `📦 <b>My Orders</b>\n\nYou have completed ${user.totalPurchases || 0} purchases so far.`,
+          parse_mode: "HTML",
+          reply_markup: { inline_keyboard: [[{ text: "🔙 Back", callback_data: "main_menu" }]] }
+        });
+      }
+      else if (data === "how_to_use") {
+        await axios.post(`${TELEGRAM_API}/sendMessage`, {
+          chat_id: chatId,
+          text: `▶️ <b>How To Use</b>\n\n1. Add balance or buy panels directly via QR.\n2. Submit payment and click 'Check Payment'.\n3. Admin verifies and sends key instantly!`,
+          parse_mode: "HTML",
+          reply_markup: { inline_keyboard: [[{ text: "🔙 Back", callback_data: "main_menu" }]] }
+        });
+      }
+      else if (data === "daily_spin") {
+        await axios.post(`${TELEGRAM_API}/sendMessage`, {
+          chat_id: chatId,
+          text: `🎡 <b>Daily Spin & Win</b>\n\nComing soon! Spin daily to win bonus wallet balance.`,
+          parse_mode: "HTML",
+          reply_markup: { inline_keyboard: [[{ text: "🔙 Back", callback_data: "main_menu" }]] }
+        });
+      }
+      else if (data === "leaderboard") {
+        await axios.post(`${TELEGRAM_API}/sendMessage`, {
+          chat_id: chatId,
+          text: `📊 <b>Top Leaderboard</b>\n\n1. ${user.name} - ₹${user.totalSpent || 0} spent`,
+          parse_mode: "HTML",
+          reply_markup: { inline_keyboard: [[{ text: "🔙 Back", callback_data: "main_menu" }]] }
+        });
+      }
       else if (data.startsWith("check_order_") || data.startsWith("check_deposit_")) {
         await adminApproval.handleCheckPayment(cq, TELEGRAM_API);
       }
@@ -178,31 +236,23 @@ Aap yahan se automated digital panels kharid sakte hain aur balance add kar sakt
         await adminApproval.handleAdminRejection(cq, TELEGRAM_API);
       }
 
-      // Answer callback query to remove loading loader on button
       await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, {
         callback_query_id: cq.id
       }).catch(() => {});
     }
   } catch (err) {
-    console.log("Error handling update:", err.message);
+    console.log("Error:", err.message);
   }
 });
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, async () => {
-  console.log(`TATSER Bot is running on port ${PORT}`);
-
-  // Render ka official external URL automatic utha kar Telegram par webhook set kar dega
+  console.log(`Bot running on port ${PORT}`);
   const renderUrl = process.env.RENDER_EXTERNAL_URL;
   if (renderUrl) {
-    const webhookUrl = `${renderUrl}/webhook/${TOKEN}`;
     try {
-      await axios.get(`${TELEGRAM_API}/setWebhook?url=${webhookUrl}`);
-      console.log(`✅ Webhook Successfully Set: ${webhookUrl}`);
-    } catch (err) {
-      console.log("❌ Failed to set webhook:", err.message);
-    }
-  } else {
-    console.log("⚠️ RENDER_EXTERNAL_URL not found, webhook not set automatically.");
+      await axios.get(`${TELEGRAM_API}/setWebhook?url=${renderUrl}/webhook/${TOKEN}`);
+      console.log(`Webhook set successfully!`);
+    } catch (e) {}
   }
 });
