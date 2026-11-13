@@ -1,18 +1,39 @@
-const keysStock = {
-  "myth_1h": ["MYTH-1H-AAAA", "MYTH-1H-BBBB"],
-  "myth_3h": ["MYTH-3H-CCCC", "MYTH-3H-DDDD"],
-  "myth_6h": ["MYTH-6H-EEEE", "MYTH-6H-FFFF"],
-  "drake_1h": ["DRKE-1H-1111", "DRKE-1H-2222"],
-  "drake_3h": ["DRKE-3H-3333", "DRKE-3H-4444"],
-  "drake_6h": ["DRKE-6H-5555", "DRKE-6H-6666"]
+// Yahan aap apni keys array ke andar dalte jayenge
+const keysStore = {
+  drake: {
+    "1h": [
+      "DRAKE-1H-KEY111",
+      "DRAKE-1H-KEY222",
+      "DRAKE-1H-KEY333"
+    ],
+    "3h": [
+      "DRAKE-3H-KEY111",
+      "DRAKE-3H-KEY222"
+    ],
+    "6h": [
+      "DRAKE-6H-KEY111"
+    ]
+  },
+  myth: {
+    "1h": [
+      "MYTH-1H-KEY111",
+      "MYTH-1H-KEY222"
+    ],
+    "3h": [
+      "MYTH-3H-KEY111"
+    ],
+    "6h": [
+      "MYTH-6H-KEY111"
+    ]
+  },
+
+  // Yeh function automatic pehli key uthakar stock se delete kar dega
+  getNextKey(panel, duration) {
+    if (this[panel] && this[panel][duration] && this[panel][duration].length > 0) {
+      return this[panel][duration].shift(); // Ek key use hote hi list se hat jayegi
+    }
+    return null; // Agar keys khatam ho gayi toh null (Out of stock) return karega
+  }
 };
 
-function getNextKey(panelKey, duration) {
-  const stockKey = `${panelKey}_${duration}`;
-  if (keysStock[stockKey] && keysStock[stockKey].length > 0) {
-    return keysStock[stockKey].shift();
-  }
-  return `TATSER-AUTO-${panelKey.toUpperCase()}-${duration.toUpperCase()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
-}
-
-module.exports = { getNextKey };
+module.exports = keysStore;
