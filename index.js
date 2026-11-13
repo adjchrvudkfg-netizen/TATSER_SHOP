@@ -1,7 +1,8 @@
 const express = require('express');
 const axios = require('axios');
+const fs = require('fs');
+const path = require('path');
 const config = require('./config');
-const keysData = require('./keysdata'); // keysdata.js linked for stock management
 
 const app = express();
 app.use(express.json());
@@ -15,6 +16,21 @@ const db = {
   users: {},
   processedOrders: {}
 };
+
+// Helper to get fresh keysdata without caching issues
+function getKeysData() {
+  const filePath = path.resolve('./keysdata.js');
+  try {
+    delete require.cache[require.resolve(filePath)];
+    return require('./keysdata');
+  } catch (e) {
+    return {
+      drake: { "1h": [], "3h": [], "6h": [] },
+      myth: { "1h": [], "3h": [], "6h": [] },
+      getNextKey() { return null; }
+    };
+  }
+}
 
 function getUser(userId, firstName) {
   if (!db.users[userId]) {
@@ -96,6 +112,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
       const data = cq.data;
       const from = cq.from;
       const user = getUser(from.id, from.first_name);
+      const keysData = getKeysData(); // Fetch fresh keys data
 
       const deletePrevMessage = async () => {
         try {
@@ -636,3 +653,4 @@ app.listen(PORT, async () => {
     } catch (e) {}
   }
 });
+    
