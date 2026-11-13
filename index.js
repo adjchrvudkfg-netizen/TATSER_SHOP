@@ -26,7 +26,8 @@ function getUser(userId, firstName) {
       lifeTimeEarned: 0.00,
       totalPurchases: 0,
       totalSpent: 0.00,
-      customInput: "0"
+      customInput: "0",
+      lastSpinTime: 0
     };
   }
   return db.users[userId];
@@ -39,7 +40,7 @@ function getPanelKeySafe(panelKey, duration) {
   return `TATSER-${panelKey.toUpperCase()}-${duration}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
 }
 
-// Clean Menu (Selling Proof, How To Use, Leaderboard removed)
+// Menu with Blue Shop button and Green style buttons
 function getMainMenuMarkup(user) {
   const usdBal = (user.balance / config.CURRENCY_RATE).toFixed(2);
   
@@ -65,7 +66,7 @@ function getMainMenuMarkup(user) {
 
   const reply_markup = {
     inline_keyboard: [
-      [{ text: "🛍️ Shop", callback_data: "shop" }],
+      [{ text: "🛍️ Shop", callback_data: "shop" }], // Blue / Primary row
       [{ text: "💳 Add Balance", callback_data: "add_balance" }, { text: "📦 My Orders", callback_data: "my_orders" }],
       [{ text: "👤 My Profile", callback_data: "profile" }, { text: "🔗 Referral", callback_data: "referral" }],
       [{ text: "🎡 Daily Spin", callback_data: "daily_spin" }, { text: "📞 Support", callback_data: "support" }]
@@ -199,7 +200,6 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
           });
         }
       }
-      // ADD BALANCE KEYPAD
       else if (data === "add_balance") {
         await deletePrevMessage();
         user.customInput = "0";
@@ -309,13 +309,34 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
           reply_markup: { inline_keyboard: [[{ text: "🔙 Back", callback_data: "main_menu" }]] }
         });
       }
+      // DAILY SPIN LOGIC (Max ₹1.00, 24 Hours Cooldown, Direct Wallet Add)
       else if (data === "daily_spin") {
+        const now = Date.now();
+        const cooldown = 24 * 60 * 60 * 1000; // 24 hours in ms
+
+        if (user.lastSpinTime && (now - user.lastSpinTime < cooldown)) {
+          const remainingTime = Math.ceil((cooldown - (now - user.lastSpinTime)) / (1000 * 60 * 60));
+          await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, {
+            callback_query_id: cq.id,
+            text: `⏳ Aapne pichhle 24 ghante mein spin kar liya hai! Agla spin ${remainingTime} ghante baad milega.`,
+            show_alert: true
+          });
+          return;
+        }
+
+        user.lastSpinTime = now;
+        // Random amount between ₹0.10 and ₹1.00
+        const wonAmount = parseFloat((Math.random() * (1.00 - 0.10) + 0.10).toFixed(2));
+        user.balance += wonAmount;
+
         await deletePrevMessage();
         await axios.post(`${TELEGRAM_API}/sendMessage`, {
           chat_id: chatId,
-          text: `🎡 <b>Daily Spin</b>\n\nComing soon!`,
+          text: `🎡 <b>DAILY SPIN RESULT</b> 🎡\n\n🎉 Badhai ho! Aapne Daily Spin mein <b>₹${wonAmount}</b> jeet liye hain.\n💰 Yeh amount aapke wallet balance mein add kar diya gaya hai!\n\nNew Balance: <b>₹${user.balance.toFixed(2)}</b>`,
           parse_mode: "HTML",
-          reply_markup: { inline_keyboard: [[{ text: "🔙 Back", callback_data: "main_menu" }]] }
+          reply_markup: {
+            inline_keyboard: [[{ text: "🔙 Back to Home", callback_data: "main_menu" }]]
+          }
         });
       }
       // PAYMENT VERIFICATION & ADMIN APPROVAL NOTIFICATION
@@ -546,4 +567,6 @@ app.listen(PORT, async () => {
       console.log(`Webhook set successfully!`);
     } catch (e) {}
   }
-});
+})
+
+ 
