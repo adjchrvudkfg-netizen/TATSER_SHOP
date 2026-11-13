@@ -1,4 +1,8 @@
-const keysStore = {
+const fs = require('fs');
+const path = require('path');
+const filePath = path.join(__dirname, 'keysdata.json');
+
+let keysStore = {
   drake: {
     "1h": [
       "DRAKE-W1S5-ISNS-Q8C7",
@@ -117,17 +121,33 @@ const keysStore = {
     ]
   },
   myth: {
-    "1h": ["MYTH-1H-KEY111"],
-    "3h": ["MYTH-3H-KEY111"],
-    "6h": ["MYTH-6H-KEY111"]
+    "1h": ["MYTH-1H-KEY111", "MYTH-1H-KEY222"], // Yahan bhi multiple keys daal dein
+    "3h": ["MYTH-3H-KEY111", "MYTH-3H-KEY222"],
+    "6h": ["MYTH-6H-KEY111", "MYTH-6H-KEY222"]
   },
 
   getNextKey(panel, duration) {
     if (this[panel] && this[panel][duration] && this[panel][duration].length > 0) {
-      return this[panel][duration].shift();
+      const key = this[panel][duration].shift();
+      
+      // Save state permanently so it never repeats
+      try {
+        fs.writeFileSync(filePath, JSON.stringify(this, null, 2), 'utf8');
+      } catch (e) {}
+
+      return key;
     }
     return null;
   }
 };
+
+// Load saved state if exists
+try {
+  if (fs.existsSync(filePath)) {
+    const savedData = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    keysStore.drake = savedData.drake || keysStore.drake;
+    keysStore.myth = savedData.myth || keysStore.myth;
+  }
+} catch (e) {}
 
 module.exports = keysStore;
