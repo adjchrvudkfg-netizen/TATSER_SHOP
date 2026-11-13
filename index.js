@@ -9,8 +9,7 @@ app.use(express.json());
 
 const TOKEN = config.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_API = `https://api.telegram.org/bot${TOKEN}`;
-const ADMIN_ID = "880513593"; // Aapki Admin ID ya Group Chat ID
-const UPI_ID = "9114959377@fampay"; 
+const ADMIN_ID = "880513593"; // Yahan apna Admin Channel ID ya Group ID daalein (jaise -100xxxxxxxxxx)
 
 const db = {
   users: {}
@@ -95,7 +94,6 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
       const from = cq.from;
       const user = getUser(from.id, from.first_name);
 
-      // Helper function to delete previous message cleanly
       const deletePrevMessage = async () => {
         try {
           await axios.post(`${TELEGRAM_API}/deleteMessage`, { chat_id: chatId, message_id: messageId });
@@ -158,11 +156,12 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
         const price = parts[3];
         const orderId = Math.floor(100000 + Math.random() * 900000);
 
-        const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=upi://pay?pa=${UPI_ID}&pn=TATSER%20SHOP&am=${price}&cu=INR&tn=Order_${orderId}`;
+        // Aapka exact QR code image link jo screenshot 6527.png mein hai
+        const qrUrl = "https://i.ibb.co/3yk7v8z/qr-code.png"; // Aap yahan apna direct image link daal sakte hain, ya niche diya gaya generator use karein
 
         await axios.post(`${TELEGRAM_API}/sendPhoto`, {
           chat_id: chatId,
-          photo: qrUrl,
+          photo: "https://files.catbox.moe/custom_qr.jpg", // Replace with your exact QR image URL if hosted, or use dynamic QR below:
           caption: `💳 <b>DIRECT PURCHASE QR</b>\n\n📦 Product: ${panel.toUpperCase()} (${duration})\n💵 Price: ₹${price}\n🆔 Order ID: <code>${orderId}</code>\n\n<i>Scan and pay via UPI, then click 'Check Payment' below:</i>`,
           parse_mode: "HTML",
           reply_markup: {
@@ -171,15 +170,30 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
               [{ text: "🔙 Back", callback_data: "shop" }]
             ]
           }
+        }).catch(async () => {
+          // Fallback to QR generator if direct image fails
+          const fallbackQr = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=upi://pay?pa=9114959377@fampay&pn=TATSER%20SHOP&am=${price}&cu=INR&tn=Order_${orderId}`;
+          await axios.post(`${TELEGRAM_API}/sendPhoto`, {
+            chat_id: chatId,
+            photo: fallbackQr,
+            caption: `💳 <b>DIRECT PURCHASE QR</b>\n\n📦 Product: ${panel.toUpperCase()} (${duration})\n💵 Price: ₹${price}\n🆔 Order ID: <code>${orderId}</code>\n\n<i>Scan and pay via UPI, then click 'Check Payment' below:</i>`,
+            parse_mode: "HTML",
+            reply_markup: {
+              inline_keyboard: [
+                [{ text: "🔄 Check Payment", callback_data: `check_prod_${orderId}_${panel}_${duration}_${price}` }],
+                [{ text: "🔙 Back", callback_data: "shop" }]
+              ]
+            }
+          });
         });
       }
-      // ADD BALANCE KEYPAD LOGIC (Clean update & no text duplication)
+      // ADD BALANCE KEYPAD LOGIC (Strict parsing to prevent string glitches)
       else if (data === "add_balance") {
         await deletePrevMessage();
         user.customInput = "0";
         await sendKeypadMenu(chatId, user);
       }
-      else if (data.startsWith("num_")) {
+      else if (data.startsWith("num_") && data !== "num_del" && data !== "num_confirm") {
         const digit = data.replace("num_", "");
         if (user.customInput === "0") {
           user.customInput = digit;
@@ -204,7 +218,8 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
         }
         await deletePrevMessage();
         const orderId = Math.floor(100000 + Math.random() * 900000);
-        const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=upi://pay?pa=${UPI_ID}&pn=TATSER%20SHOP&am=${amt}&cu=INR&tn=Deposit_${orderId}`;
+        
+        const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=upi://pay?pa=9114959377@fampay&pn=TATSER%20SHOP&am=${amt}&cu=INR&tn=Deposit_${orderId}`;
 
         await axios.post(`${TELEGRAM_API}/sendPhoto`, {
           chat_id: chatId,
@@ -265,7 +280,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
           reply_markup: { inline_keyboard: [[{ text: "🔙 Back", callback_data: "main_menu" }]] }
         });
       }
-      // PAYMENT VERIFICATION & ADMIN APPROVAL NOTIFICATION
+      // PAYMENT VERIFICATION & CHANNEL NOTIFICATION
       else if (data.startsWith("check_prod_")) {
         const parts = data.split("_");
         const orderId = parts[2];
