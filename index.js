@@ -2,18 +2,12 @@ const express = require('express');
 const axios = require('axios');
 const config = require('./config');
 
-// Saare modules ko require karna
 const shopModule = require('./shop');
 const addBalanceModule = require('./addBalance');
 const referralModule = require('./referral');
 const supportModule = require('./support');
-const adminApproval = require('./adminaproval');
-
-// Agar aapke paas yeh files hain toh inhe bhi link karein (optional safe checks ke sath)
-let profileModule, orderModule, ludoSpinModule;
-try { profileModule = require('./profile'); } catch (e) {}
-try { orderModule = require('./order'); } catch (e) {}
-try { ludoSpinModule = require('./ludospin'); } catch (e) {}
+let keysData = {};
+try { keysData = require('./keysdata'); } catch (e) {}
 
 const app = express();
 app.use(express.json());
@@ -21,7 +15,6 @@ app.use(express.json());
 const TOKEN = config.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_API = `https://api.telegram.org/bot${TOKEN}`;
 
-// In-memory Database
 const db = {
   users: {}
 };
@@ -31,7 +24,7 @@ function getUser(userId, firstName) {
     db.users[userId] = {
       id: userId,
       name: firstName || "User",
-      balance: 15.00, // Starting default bonus balance ya 0
+      balance: 15.00,
       totalReferrals: 0,
       lifeTimeEarned: 0.00,
       totalPurchases: 0,
@@ -41,7 +34,15 @@ function getUser(userId, firstName) {
   return db.users[userId];
 }
 
-// Main Menu Markup (Aapke screenshot 6503.png ke jaisa exact layout)
+// Key Generator fallback
+function getPanelKeySafe(panelKey, duration) {
+  if (keysData && typeof keysData.getNextKey === 'function') {
+    return keysData.getNextKey(panelKey, duration);
+  }
+  return `TATSER-${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
+}
+
+// Main Menu Markup
 function getMainMenuMarkup(user) {
   const usdBal = (user.balance / config.CURRENCY_RATE).toFixed(2);
   
@@ -226,14 +227,77 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
           reply_markup: { inline_keyboard: [[{ text: "🔙 Back", callback_data: "main_menu" }]] }
         });
       }
+      // Inline Admin Approval & Check Payment Logic
       else if (data.startsWith("check_order_") || data.startsWith("check_deposit_")) {
-        await adminApproval.handleCheckPayment(cq, TELEGRAM_API);
+        const parts = data.split("_");
+        const orderId = parts[2];
+        const amount = parts[3];
+        
+        await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, {
+          callback_query_id: cq.id,
+          text: "⏳ Payment check ki ja rahi hai! Admin verification ke baad key mil jayegi.",
+          show_alert: true
+        });
+
+        const ADMIN_CHAT_ID = "880513593"; // Aapki Admin Chat ID
+        await axios.post(`${TELEGRAM_API}/sendMessage`, {
+          chat_id: ADMIN_CHAT_ID,
+          text: `🔔 <b>NEW PAYMENT VERIFICATION</b>\n\n👤 User: ${user.name} (ID: <code>${user.id}</code>)\n🆔 Order ID: <code>${orderId}</code>\n💵 Amount: ₹${amount}`,
+          parse_mode: "HTML",
+          reply_markup: {
+            inline_keyboard: [[
+              { text: "✅ Approve & Send Key", callback_data: `approve_${user.id}_${amount}_${orderId}_phantom_1d` },
+              { text: "❌ Reject", callback_data: `reject_${user.id}_${orderId}` }
+            ]]
+          }
+        });
       }
       else if (data.startsWith("approve_")) {
-        await adminApproval.handleAdminApproval(cq, TELEGRAM_API, db.users);
+        const parts = data.split("_");
+        const targetUserId = parts[1];
+        const amount = parseFloat(parts[2]);
+        const orderId = parts[3];
+        const panelKey = parts[4] || "phantom";
+        const duration = parts[5] || "1d";
+
+        if (db.users[targetUserId]) {
+          db.users[targetUserId].totalPurchases = (db.users[targetUserId].totalPurchases || 0) + 1;
+          db.users[targetUserId].totalSpent = (db.users[targetUserId].totalSpent || 0) + amount;
+        }
+
+        await axios.post(`${TELEGRAM_API}/editMessageText`, {
+          chat_id: chatId,
+          message_id: cq.message.message_id,
+          text: `✅ <b>Approved & Key Dispatched!</b>\nUser: ${targetUserId}\nAmount: ₹${amount}`,
+          parse_mode: "HTML"
+        });
+
+        const licenseKey = getPanelKeySafe(panelKey, duration);
+
+        await axios.post(`${TELEGRAM_API}/sendMessage`, {
+          chat_id: targetUserId,
+          text: `✅ <b>Payment Successful!</b>\n\n🎮 Game: ANDROID NON ROOT PANEL\n⏳ Duration: ${duration.toUpperCase()}\n🔑 Key: <code>${licenseKey}</code>`,
+          parse_mode: "HTML",
+          reply_markup: { inline_keyboard: [[{ text: "🔙 Menu", callback_data: "main_menu" }]] }
+        }).catch(() => {});
       }
       else if (data.startsWith("reject_")) {
-        await adminApproval.handleAdminRejection(cq, TELEGRAM_API);
+        const parts = data.split("_");
+        const targetUserId = parts[1];
+        const orderId = parts[2];
+
+        await axios.post(`${TELEGRAM_API}/editMessageText`, {
+          chat_id: chatId,
+          message_id: cq.message.message_id,
+          text: `❌ <b>Payment Rejected</b> (Order: ${orderId})`,
+          parse_mode: "HTML"
+        });
+
+        await axios.post(`${TELEGRAM_API}/sendMessage`, {
+          chat_id: targetUserId,
+          text: `❌ <b>Payment Verification Failed!</b> Order ID: <code>${orderId}</code> verify nahi ho paya.`,
+          parse_mode: "HTML"
+        }).catch(() => {});
       }
 
       await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, {
