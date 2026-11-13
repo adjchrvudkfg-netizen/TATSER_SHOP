@@ -21,7 +21,7 @@ function getUser(userId, firstName) {
     db.users[userId] = {
       id: userId,
       name: firstName || "User",
-      balance: 0.00, // Starting balance set to 0.00 as requested
+      balance: 0.00,
       totalReferrals: 0,
       lifeTimeEarned: 0.00,
       totalPurchases: 0,
@@ -39,7 +39,7 @@ function getPanelKeySafe(panelKey, duration) {
   return `TATSER-${panelKey.toUpperCase()}-${duration}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
 }
 
-// Vetlam style Rich Welcome Menu with TATSER branding and ₹0 balance
+// Clean Menu (Selling Proof, How To Use, Leaderboard removed)
 function getMainMenuMarkup(user) {
   const usdBal = (user.balance / config.CURRENCY_RATE).toFixed(2);
   
@@ -67,10 +67,8 @@ function getMainMenuMarkup(user) {
     inline_keyboard: [
       [{ text: "🛍️ Shop", callback_data: "shop" }],
       [{ text: "💳 Add Balance", callback_data: "add_balance" }, { text: "📦 My Orders", callback_data: "my_orders" }],
-      [{ text: "👤 My Profile", callback_data: "profile" }, { text: "▶️ How To Use", callback_data: "how_to_use" }],
-      [{ text: "🔗 Referral", callback_data: "referral" }, { text: "🎡 Daily Spin", callback_data: "daily_spin" }],
-      [{ text: "📞 Support", callback_data: "support" }],
-      [{ text: "💎 Selling Proof", url: "https://t.me/your_selling_proof" }, { text: "📊 Leaderboard", callback_data: "leaderboard" }]
+      [{ text: "👤 My Profile", callback_data: "profile" }, { text: "🔗 Referral", callback_data: "referral" }],
+      [{ text: "🎡 Daily Spin", callback_data: "daily_spin" }, { text: "📞 Support", callback_data: "support" }]
     ]
   };
 
@@ -201,6 +199,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
           });
         }
       }
+      // ADD BALANCE KEYPAD
       else if (data === "add_balance") {
         await deletePrevMessage();
         user.customInput = "0";
@@ -310,29 +309,11 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
           reply_markup: { inline_keyboard: [[{ text: "🔙 Back", callback_data: "main_menu" }]] }
         });
       }
-      else if (data === "how_to_use") {
-        await deletePrevMessage();
-        await axios.post(`${TELEGRAM_API}/sendMessage`, {
-          chat_id: chatId,
-          text: `▶️ <b>How To Use</b>\n\n1. Add balance using FamPay UPI QR or buy panels directly.\n2. Click 'Check Payment' after paying.\n3. Admin verifies and delivers instantly!`,
-          parse_mode: "HTML",
-          reply_markup: { inline_keyboard: [[{ text: "🔙 Back", callback_data: "main_menu" }]] }
-        });
-      }
       else if (data === "daily_spin") {
         await deletePrevMessage();
         await axios.post(`${TELEGRAM_API}/sendMessage`, {
           chat_id: chatId,
           text: `🎡 <b>Daily Spin</b>\n\nComing soon!`,
-          parse_mode: "HTML",
-          reply_markup: { inline_keyboard: [[{ text: "🔙 Back", callback_data: "main_menu" }]] }
-        });
-      }
-      else if (data === "leaderboard") {
-        await deletePrevMessage();
-        await axios.post(`${TELEGRAM_API}/sendMessage`, {
-          chat_id: chatId,
-          text: `📊 <b>Top Leaderboard</b>\n\n1. ${user.name} - ₹${user.totalSpent || 0} spent`,
           parse_mode: "HTML",
           reply_markup: { inline_keyboard: [[{ text: "🔙 Back", callback_data: "main_menu" }]] }
         });
@@ -466,6 +447,47 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
 });
 
 async function sendKeypadMenu(chatId, user) {
+  const text = 
+`🏦 <b>Custom Amount</b>
+
+Method: 🟢 FamPay UPI (${UPI_ID})
+Min: ₹1 | Max: ₹5,000
+
+Apna amount enter karo aur payment complete karke balance add karwao.
+
+👇 Amount: <b>₹${user.customInput}</b>
+👇 Amount type karo – buttons se:`;
+
+  const markup = {
+    inline_keyboard: [
+      [
+        { text: "💰 1", callback_data: "num_1" },
+        { text: "💰 2", callback_data: "num_2" },
+        { text: "💰 3", callback_data: "num_3" }
+      ],
+      [
+        { text: "💰 4", callback_data: "num_4" },
+        { text: "💰 5", callback_data: "num_5" },
+        { text: "💰 6", callback_data: "num_6" }
+      ],
+      [
+        { text: "💰 7", callback_data: "num_7" },
+        { text: "💰 8", callback_data: "num_8" },
+        { text: "💰 9", callback_data: "num_9" }
+      ],
+      [
+        { text: "❌ Delete", callback_data: "num_del" },
+        { text: "💰 0", callback_data: "num_0" },
+        { text: "✅ Confirm", callback_data: "num_confirm" }
+      ],
+      [{ text: "🔙 Back", callback_data: "main_menu" }]
+    ]
+  };
+
+  await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text, parse_mode: "HTML", reply_markup: markup });
+}
+
+async function updateKeypadMenu(chatId, messageId, user) {
   const text = 
 `🏦 <b>Custom Amount</b>
 
