@@ -1,9 +1,8 @@
 const axios = require('axios');
-const { getNextKey } = require('./keysdata'); // Keys stock file require ki gayi hai
+const { getNextKey } = require('./keysdata');
 
 // 1. Jab user QR ke neeche "Check Payment" par click kare
 async function handleCheckPayment(callbackQuery, TELEGRAM_API) {
-  const chatId = callbackQuery.message.chat.id;
   const data = callbackQuery.data; // format: check_order_ORDERID_PRICE
   const parts = data.split("_");
   
@@ -12,15 +11,13 @@ async function handleCheckPayment(callbackQuery, TELEGRAM_API) {
   const userId = callbackQuery.from.id;
   const userName = callbackQuery.from.first_name || "User";
 
-  // User ko notification dena ki request bhej di gayi hai
   await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, {
     callback_query_id: callbackQuery.id,
     text: "⏳ Payment check ki ja rahi hai! Admin verification ke baad key mil jayegi.",
     show_alert: true
   });
 
-  // Aap yahan apna Admin Telegram Chat ID daal sakte hain
-  const ADMIN_CHAT_ID = "YOUR_ADMIN_TELEGRAM_ID"; 
+  const ADMIN_CHAT_ID = "YOUR_ADMIN_TELEGRAM_ID"; // Yahan apni Admin Telegram ID daalein
 
   const adminText = 
 `🔔 <b>NEW PAYMENT VERIFICATION REQUEST</b> 🔔
@@ -38,8 +35,8 @@ Kripya apna FamPay check karein aur neeche diye button se approve ya reject kare
     reply_markup: {
       inline_keyboard: [
         [
-          { text: "✅ Approve & Send Key", callback_data: `approve_${userId}_${amount}_${orderId}_phantom_1d`, style: "success" },
-          { text: "❌ Reject", callback_data: `reject_${userId}_${orderId}`, style: "danger" }
+          { text: "✅ Approve & Send Key", callback_data: `approve_${userId}_${amount}_${orderId}_phantom_1d` },
+          { text: "❌ Reject", callback_data: `reject_${userId}_${orderId}` }
         ]
       ]
     }
@@ -48,7 +45,7 @@ Kripya apna FamPay check karein aur neeche diye button se approve ya reject kare
 
 // 2. Jab Admin "Approve" par click kare
 async function handleAdminApproval(callbackQuery, TELEGRAM_API, usersDb) {
-  const data = callbackQuery.data; // format: approve_userId_amount_orderId_panelKey_duration
+  const data = callbackQuery.data;
   const parts = data.split("_");
   const targetUserId = parts[1];
   const amount = parseFloat(parts[2]);
@@ -56,13 +53,11 @@ async function handleAdminApproval(callbackQuery, TELEGRAM_API, usersDb) {
   const panelKey = parts[4] || "phantom";
   const duration = parts[5] || "1d";
 
-  // User ka stats update karein
   if (usersDb && usersDb[targetUserId]) {
     usersDb[targetUserId].totalPurchases = (usersDb[targetUserId].totalPurchases || 0) + 1;
     usersDb[targetUserId].totalSpent = (usersDb[targetUserId].totalSpent || 0) + amount;
   }
 
-  // Admin ke message ko update karein
   await axios.post(`${TELEGRAM_API}/editMessageText`, {
     chat_id: callbackQuery.message.chat.id,
     message_id: callbackQuery.message.message_id,
@@ -70,10 +65,8 @@ async function handleAdminApproval(callbackQuery, TELEGRAM_API, usersDb) {
     parse_mode: "HTML"
   });
 
-  // Stock mein se valid key nikalna
   const licenseKey = getNextKey(panelKey, duration);
 
-  // User ko successful purchase aur key bhejna
   const userSuccessMessage = 
 `✅ <b>Payment Successful!</b>
 
@@ -91,7 +84,7 @@ async function handleAdminApproval(callbackQuery, TELEGRAM_API, usersDb) {
       parse_mode: "HTML",
       reply_markup: {
         inline_keyboard: [
-          [{ text: "🔙 Back to Menu", callback_data: "main_menu", style: "success" }]
+          [{ text: "🔙 Back to Menu", callback_data: "main_menu" }]
         ]
       }
     });
@@ -102,7 +95,7 @@ async function handleAdminApproval(callbackQuery, TELEGRAM_API, usersDb) {
 
 // 3. Jab Admin "Reject" par click kare
 async function handleAdminRejection(callbackQuery, TELEGRAM_API) {
-  const data = callbackQuery.data; // format: reject_userId_orderId
+  const data = callbackQuery.data;
   const parts = data.split("_");
   const targetUserId = parts[1];
   const orderId = parts[2];
