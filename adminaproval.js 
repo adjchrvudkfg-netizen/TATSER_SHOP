@@ -1,0 +1,66 @@
+const axios = require('axios');
+
+// Random Key generator
+function generateRandomKey() {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let key = '';
+  for (let i = 0; i < 9; i++) {
+    key += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return `TATSER-${key}`;
+}
+
+// Jab Admin "Approve" par click kare
+async function handleAdminApproval(callbackQuery, TELEGRAM_API, usersDb) {
+  const data = callbackQuery.data; // format: approve_userId_amount_orderId_productName
+  const parts = data.split("_");
+  const targetUserId = parts[1];
+  const amount = parseFloat(parts[2]);
+  const orderId = parts[3];
+  const productName = parts.slice(4).join(" ") || "ANDROID NON ROOT PANEL";
+
+  // 1. User ka stats update karein
+  if (usersDb && usersDb[targetUserId]) {
+    usersDb[targetUserId].totalPurchases = (usersDb[targetUserId].totalPurchases || 0) + 1;
+    usersDb[targetUserId].totalSpent = (usersDb[targetUserId].totalSpent || 0) + amount;
+  }
+
+  // 2. Admin ke message ko update karein
+  await axios.post(`${TELEGRAM_API}/editMessageText`, {
+    chat_id: callbackQuery.message.chat.id,
+    message_id: callbackQuery.message.message_id,
+    text: `✅ <b>Payment Approved & Key Sent!</b>\n\nUser ID: ${targetUserId}\nAmount: ₹${amount}\nOrder ID: ${orderId}`,
+    parse_mode: "HTML"
+  });
+
+  // 3. License Key generate karein
+  const licenseKey = generateRandomKey();
+
+  // 4. User ko Successful Purchase aur Key bhejein
+  const userSuccessMessage = 
+`✅ <b>Payment Successful!</b>
+
+🎮 <b>Game:</b> ${productName}
+⏳ <b>Duration:</b> 1 Days
+📦 <b>Quantity:</b> 1
+🔑 <b>Key:</b> <code>${licenseKey}</code>
+
+🙏 <i>Thank you for your purchase!</i>`;
+
+  try {
+    await axios.post(`${TELEGRAM_API}/sendMessage`, {
+      chat_id: targetUserId,
+      text: userSuccessMessage,
+      parse_mode: "HTML",
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: "🔙 Back to Menu", callback_data: "main_menu", style: "success" }]
+        ]
+      }
+    });
+  } catch (err) {
+    console.log("Could not message user directly:", err);
+  }
+}
+
+module.exports = { handleAdminApproval };
