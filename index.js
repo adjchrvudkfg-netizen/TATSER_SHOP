@@ -1,15 +1,13 @@
-
 const express = require('express');
 const axios = require('axios');
 
 const app = express();
 app.use(express.json());
 
-// Apna Bot Token yahan daalein
-const BOT_TOKEN = process.env.BOT_TOKEN || 'YOUR_BOT_TOKEN_HERE';
+// Aapka Bot Token yahan set kar diya gaya hai
+const BOT_TOKEN = process.env.BOT_TOKEN || '9114959377:AAHthP85iKlUZ4Mw6UfeMPvjGYdaOyzzSD0';
 const TELEGRAM_API = `https://api.telegram.org/bot${BOT_TOKEN}`;
 
-// Dummy Database (Production mein aap PostgreSQL connect kar sakte hain)
 const users = {};
 
 function getUser(userId, firstName) {
@@ -17,15 +15,14 @@ function getUser(userId, firstName) {
     users[userId] = {
       id: userId,
       name: firstName || 'User',
-      balance: 15 // Default balance screenshot ke hisab se
+      balance: 15 // Screenshot ke mutabiq default balance ₹15
     };
   }
   return users[userId];
 }
 
-// Start Message Generator (Exact Same Design & TATSER Name)
 function getStartPayload(chatId, user) {
-  const usdBalance = (user.balance / 93.75).toFixed(2); // ₹15 (~$0.16)
+  const usdBalance = (user.balance / 93.75).toFixed(2);
 
   const text = 
 `🌺 – <b>TATSER PANEL SHOP</b> – 🌺
@@ -104,7 +101,7 @@ function getStartPayload(chatId, user) {
       [
         {
           text: "💎 Selling Proof",
-          url: "https://t.me/your_proof_channel", // Apna channel link daalein
+          url: "https://t.me/your_proof_channel", // Apna channel link yahan daal sakte hain
           style: "success"
         },
         {
@@ -124,10 +121,8 @@ function getStartPayload(chatId, user) {
   };
 }
 
-// Updates Handle karne ka function
 async function handleUpdate(update) {
   try {
-    // 1. Text Commands (/start)
     if (update.message && update.message.text) {
       const chatId = update.message.chat.id;
       const text = update.message.text;
@@ -140,13 +135,11 @@ async function handleUpdate(update) {
       }
     }
 
-    // 2. Button Clicks (Callback Queries)
     if (update.callback_query) {
       const cb = update.callback_query;
       const chatId = cb.message.chat.id;
       const data = cb.data;
 
-      // Button loading hatane ke liye
       await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, {
         callback_query_id: cb.id
       });
@@ -190,14 +183,13 @@ async function handleUpdate(update) {
         });
       }
     }
+  } concludes => {
+    // Error handler catch
   } catch (err) {
     console.error("Error:", err.response ? err.response.data : err.message);
   }
 }
 
-// ==========================================
-// LONG POLLING (Termux / Local Testing ke liye)
-// ==========================================
 let offset = 0;
 async function startPolling() {
   console.log("🚀 TATSER PANEL SHOP Bot is running...");
@@ -216,7 +208,6 @@ async function startPolling() {
   }
 }
 
-// Express server (Render hosting par port bind rakhne ke liye)
 const PORT = process.env.PORT || 3000;
 app.get('/', (req, res) => res.send('TATSER Bot is Live!'));
 app.listen(PORT, () => {
