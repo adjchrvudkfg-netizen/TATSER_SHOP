@@ -9,7 +9,7 @@ app.use(express.json());
 
 const TOKEN = config.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_API = `https://api.telegram.org/bot${TOKEN}`;
-const ADMIN_ID = "880513593"; // Aapki Admin ID ya Group Chat ID jahan notification jayegi
+const ADMIN_ID = "880513593"; // Aapki Admin ID ya Group Chat ID
 const UPI_ID = "9114959377@fampay"; 
 
 const db = {
@@ -95,7 +95,15 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
       const from = cq.from;
       const user = getUser(from.id, from.first_name);
 
+      // Helper function to delete previous message cleanly
+      const deletePrevMessage = async () => {
+        try {
+          await axios.post(`${TELEGRAM_API}/deleteMessage`, { chat_id: chatId, message_id: messageId });
+        } catch (e) {}
+      };
+
       if (data === "main_menu") {
+        await deletePrevMessage();
         const menu = getMainMenuMarkup(user);
         await axios.post(`${TELEGRAM_API}/sendMessage`, {
           chat_id: chatId,
@@ -105,7 +113,8 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
         });
       }
       else if (data === "shop") {
-        const shopText = `🛒 <b>APNA PRODUCT CHUNLO!</b>\n\nSelect your panel below[span_1](start_span)[span_1](end_span):`;
+        await deletePrevMessage();
+        const shopText = `🛒 <b>APNA PRODUCT CHUNLO!</b>\n\nSelect your panel below:`;
         const shopMarkup = {
           inline_keyboard: [
             [{ text: "🔥 Drake Panel", callback_data: "panel_drake" }],
@@ -116,7 +125,8 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
         await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text: shopText, parse_mode: "HTML", reply_markup: shopMarkup });
       }
       else if (data === "panel_myth") {
-        const text = `⚡ <b>MYTH MOD PACKAGES</b>\n\nSelect duration & price[span_2](start_span)[span_2](end_span):`;
+        await deletePrevMessage();
+        const text = `⚡ <b>MYTH MOD PACKAGES</b>\n\nSelect duration & price:`;
         const markup = {
           inline_keyboard: [
             [{ text: "⏳ 1 Hours - ₹14", callback_data: "buy_myth_1h_14" }],
@@ -128,7 +138,8 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
         await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text, parse_mode: "HTML", reply_markup: markup });
       }
       else if (data === "panel_drake") {
-        const text = `🔥 <b>DRAKE PANEL PACKAGES</b>\n\nSelect duration & price[span_3](start_span)[span_3](end_span):`;
+        await deletePrevMessage();
+        const text = `🔥 <b>DRAKE PANEL PACKAGES</b>\n\nSelect duration & price:`;
         const markup = {
           inline_keyboard: [
             [{ text: "⏳ 1 Hours - ₹9", callback_data: "buy_drake_1h_9" }],
@@ -140,6 +151,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
         await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text, parse_mode: "HTML", reply_markup: markup });
       }
       else if (data.startsWith("buy_")) {
+        await deletePrevMessage();
         const parts = data.split("_");
         const panel = parts[1];
         const duration = parts[2];
@@ -161,10 +173,11 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
           }
         });
       }
-      // ADD BALANCE KEYPAD LOGIC (Fixed editing & clean input)
+      // ADD BALANCE KEYPAD LOGIC (Clean update & no text duplication)
       else if (data === "add_balance") {
+        await deletePrevMessage();
         user.customInput = "0";
-        await sendKeypadMenu(chatId, user, null, true);
+        await sendKeypadMenu(chatId, user);
       }
       else if (data.startsWith("num_")) {
         const digit = data.replace("num_", "");
@@ -173,7 +186,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
         } else {
           user.customInput += digit;
         }
-        await sendKeypadMenu(chatId, user, messageId, false);
+        await updateKeypadMenu(chatId, messageId, user);
       }
       else if (data === "num_del") {
         if (user.customInput.length > 1) {
@@ -181,7 +194,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
         } else {
           user.customInput = "0";
         }
-        await sendKeypadMenu(chatId, user, messageId, false);
+        await updateKeypadMenu(chatId, messageId, user);
       }
       else if (data === "num_confirm") {
         const amt = parseInt(user.customInput);
@@ -189,6 +202,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
           await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, { callback_query_id: cq.id, text: "❌ Please enter a valid amount!", show_alert: true });
           return;
         }
+        await deletePrevMessage();
         const orderId = Math.floor(100000 + Math.random() * 900000);
         const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=upi://pay?pa=${UPI_ID}&pn=TATSER%20SHOP&am=${amt}&cu=INR&tn=Deposit_${orderId}`;
 
@@ -206,6 +220,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
         });
       }
       else if (data === "referral") {
+        await deletePrevMessage();
         const inviteLink = `https://t.me/T4TSAR_NEW_SHOP_BOT?start=ref_${user.id}`;
         await axios.post(`${TELEGRAM_API}/sendMessage`, {
           chat_id: chatId,
@@ -215,6 +230,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
         });
       }
       else if (data === "support") {
+        await deletePrevMessage();
         await axios.post(`${TELEGRAM_API}/sendMessage`, {
           chat_id: chatId,
           text: `📞 <b>CUSTOMER SUPPORT</b>\n\nContact Admin for any issues: @TATSER_SUPPORT`,
@@ -223,6 +239,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
         });
       }
       else if (data === "profile") {
+        await deletePrevMessage();
         await axios.post(`${TELEGRAM_API}/sendMessage`, {
           chat_id: chatId,
           text: `👤 <b>USER PROFILE</b>\n\n🆔 ID: <code>${user.id}</code>\n👤 Name: ${user.name}\n💰 Balance: ₹${user.balance.toFixed(2)}`,
@@ -231,6 +248,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
         });
       }
       else if (data === "my_orders") {
+        await deletePrevMessage();
         await axios.post(`${TELEGRAM_API}/sendMessage`, {
           chat_id: chatId,
           text: `📦 <b>My Orders</b>\n\nTotal Purchases: ${user.totalPurchases || 0}`,
@@ -239,6 +257,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
         });
       }
       else if (data === "daily_spin") {
+        await deletePrevMessage();
         await axios.post(`${TELEGRAM_API}/sendMessage`, {
           chat_id: chatId,
           text: `🎡 <b>Daily Spin</b>\n\nComing soon!`,
@@ -246,7 +265,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
           reply_markup: { inline_keyboard: [[{ text: "🔙 Back", callback_data: "main_menu" }]] }
         });
       }
-      // PAYMENT VERIFICATION & ADMIN NOTIFICATION
+      // PAYMENT VERIFICATION & ADMIN APPROVAL NOTIFICATION
       else if (data.startsWith("check_prod_")) {
         const parts = data.split("_");
         const orderId = parts[2];
@@ -374,17 +393,17 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
   }
 });
 
-async function sendKeypadMenu(chatId, user, messageId, isNew) {
+async function sendKeypadMenu(chatId, user) {
   const text = 
 `🏦 <b>Custom Amount</b>
 
-Method: 🟢 UPI (ZapUPI)[span_4](start_span)[span_4](end_span)
-Min: ₹1 | Max: ₹5,000[span_5](start_span)[span_5](end_span)
+Method: 🟢 UPI (ZapUPI)
+Min: ₹1 | Max: ₹5,000
 
-Apna amount enter karo aur payment complete karke balance add karwao[span_6](start_span)[span_6](end_span).
+Apna amount enter karo aur payment complete karke balance add karwao.
 
-👇 Amount: <b>₹${user.customInput}</b> (~$${(user.customInput / config.CURRENCY_RATE).toFixed(2)})
-👇 Amount type karo – buttons se:[span_7](start_span)[span_7](end_span)`;
+👇 Amount: <b>₹${user.customInput}</b>
+👇 Amount type karo – buttons se:`;
 
   const markup = {
     inline_keyboard: [
@@ -412,21 +431,56 @@ Apna amount enter karo aur payment complete karke balance add karwao[span_6](sta
     ]
   };
 
-  if (isNew || !messageId) {
-    await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text, parse_mode: "HTML", reply_markup: markup });
-  } else {
-    try {
-      await axios.post(`${TELEGRAM_API}/editMessageText`, {
-        chat_id: chatId,
-        message_id: messageId,
-        text: text,
-        parse_mode: "HTML",
-        reply_markup: markup
-      });
-    } catch (e) {
-      // Agar message same content ki wajah se edit na ho toh ignore karein
-    }
-  }
+  await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text, parse_mode: "HTML", reply_markup: markup });
+}
+
+async function updateKeypadMenu(chatId, messageId, user) {
+  const text = 
+`🏦 <b>Custom Amount</b>
+
+Method: 🟢 UPI (ZapUPI)
+Min: ₹1 | Max: ₹5,000
+
+Apna amount enter karo aur payment complete karke balance add karwao.
+
+👇 Amount: <b>₹${user.customInput}</b>
+👇 Amount type karo – buttons se:`;
+
+  const markup = {
+    inline_keyboard: [
+      [
+        { text: "💰 1", callback_data: "num_1" },
+        { text: "💰 2", callback_data: "num_2" },
+        { text: "💰 3", callback_data: "num_3" }
+      ],
+      [
+        { text: "💰 4", callback_data: "num_4" },
+        { text: "💰 5", callback_data: "num_5" },
+        { text: "💰 6", callback_data: "num_6" }
+      ],
+      [
+        { text: "💰 7", callback_data: "num_7" },
+        { text: "💰 8", callback_data: "num_8" },
+        { text: "💰 9", callback_data: "num_9" }
+      ],
+      [
+        { text: "❌ Delete", callback_data: "num_del" },
+        { text: "💰 0", callback_data: "num_0" },
+        { text: "✅ Confirm", callback_data: "num_confirm" }
+      ],
+      [{ text: "🔙 Back", callback_data: "main_menu" }]
+    ]
+  };
+
+  try {
+    await axios.post(`${TELEGRAM_API}/editMessageText`, {
+      chat_id: chatId,
+      message_id: messageId,
+      text: text,
+      parse_mode: "HTML",
+      reply_markup: markup
+    });
+  } catch (e) {}
 }
 
 const PORT = process.env.PORT || 3000;
