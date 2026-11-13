@@ -3,8 +3,6 @@ const config = require('./config');
 // 🔗 AFFILIATE / REFERRAL MODULE
 function getReferralMenu(user) {
   const usdEarned = (user.lifeTimeEarned / config.CURRENCY_RATE).toFixed(2);
-  
-  // Aapke bataye hue bot link ke sath referral tracking format
   const inviteLink = `https://t.me/T4TSAR_NEW_SHOP_BOT?start=ref_${user.id}`;
 
   const resText = 
@@ -31,23 +29,21 @@ function getReferralMenu(user) {
   return { resText, reply_markup };
 }
 
-// Jab koi naya user /start?ref_XYZ ke zariye bot join kare
+// Jab koi naya user referral link se join kare
 function handleNewReferral(newUserId, referrerId, usersDb) {
   if (referrerId && usersDb[referrerId] && referrerId !== newUserId.toString()) {
     const referrer = usersDb[referrerId];
     
-    // Check karo ki yeh user pehle refer ho chuka hai ya nahi
     if (!referrer.referredUsers) referrer.referredUsers = [];
     if (!referrer.referredUsers.includes(newUserId)) {
       referrer.referredUsers.push(newUserId);
       
-      // ₹1 se kam (jaise ₹0.50) reward add karo
-      const reward = 0.50;
+      const reward = 0.50; // ₹0.50 reward
       referrer.balance += reward;
       referrer.lifeTimeEarned = (referrer.lifeTimeEarned || 0) + reward;
       referrer.totalReferrals = (referrer.totalReferrals || 0) + 1;
       
-      return true; // Success
+      return true;
     }
   }
   return false;
