@@ -4,7 +4,6 @@ const axios = require('axios');
 const app = express();
 app.use(express.json());
 
-// Aapka Bot Token yahan set kar diya gaya hai
 const BOT_TOKEN = process.env.BOT_TOKEN || '9114959377:AAHthP85iKlUZ4Mw6UfeMPvjGYdaOyzzSD0';
 const TELEGRAM_API = `https://api.telegram.org/bot${BOT_TOKEN}`;
 
@@ -15,7 +14,7 @@ function getUser(userId, firstName) {
     users[userId] = {
       id: userId,
       name: firstName || 'User',
-      balance: 15 // Screenshot ke mutabiq default balance ₹15
+      balance: 15
     };
   }
   return users[userId];
@@ -52,14 +51,14 @@ function getStartPayload(chatId, user) {
         {
           text: "🛍️ Shop",
           callback_data: "shop",
-          style: "primary" // Blue Color Button
+          style: "primary"
         }
       ],
       [
         {
           text: "₹ Add Balance",
           callback_data: "add_balance",
-          style: "success" // Green Color Button
+          style: "success"
         },
         {
           text: "🧾 My Orders",
@@ -101,7 +100,7 @@ function getStartPayload(chatId, user) {
       [
         {
           text: "💎 Selling Proof",
-          url: "https://t.me/your_proof_channel", // Apna channel link yahan daal sakte hain
+          url: "https://t.me/your_proof_channel",
           style: "success"
         },
         {
@@ -183,8 +182,6 @@ async function handleUpdate(update) {
         });
       }
     }
-  } concludes => {
-    // Error handler catch
   } catch (err) {
     console.error("Error:", err.response ? err.response.data : err.message);
   }
