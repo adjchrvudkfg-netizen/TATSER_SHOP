@@ -34,7 +34,6 @@ function getUser(userId, firstName) {
   return db.users[userId];
 }
 
-// Key Generator fallback
 function getPanelKeySafe(panelKey, duration) {
   if (keysData && typeof keysData.getNextKey === 'function') {
     return keysData.getNextKey(panelKey, duration);
@@ -42,7 +41,7 @@ function getPanelKeySafe(panelKey, duration) {
   return `TATSER-${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
 }
 
-// Main Menu Markup
+// Clean Main Menu (Unwanted buttons removed)
 function getMainMenuMarkup(user) {
   const usdBal = (user.balance / config.CURRENCY_RATE).toFixed(2);
   
@@ -68,17 +67,14 @@ function getMainMenuMarkup(user) {
     inline_keyboard: [
       [{ text: "🛍️ Shop", callback_data: "shop" }],
       [{ text: "💳 Add Balance", callback_data: "add_balance" }, { text: "📦 My Orders", callback_data: "my_orders" }],
-      [{ text: "👤 My Profile", callback_data: "profile" }, { text: "▶️ How To Use", callback_data: "how_to_use" }],
-      [{ text: "🔗 Referral", callback_data: "referral" }, { text: "🎡 Daily Spin", callback_data: "daily_spin" }],
-      [{ text: "📞 Support", callback_data: "support" }],
-      [{ text: "💎 Selling Proof", url: "https://t.me/your_selling_proof" }, { text: "📊 Leaderboard", callback_data: "leaderboard" }]
+      [{ text: "👤 My Profile", callback_data: "profile" }, { text: "🔗 Referral", callback_data: "referral" }],
+      [{ text: "🎡 Daily Spin", callback_data: "daily_spin" }, { text: "📞 Support", callback_data: "support" }]
     ]
   };
 
   return { resText: welcomeText, reply_markup };
 }
 
-// Webhook Endpoint
 app.post(`/webhook/${TOKEN}`, async (req, res) => {
   res.sendStatus(200);
   const update = req.body;
@@ -203,14 +199,6 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
           reply_markup: { inline_keyboard: [[{ text: "🔙 Back", callback_data: "main_menu" }]] }
         });
       }
-      else if (data === "how_to_use") {
-        await axios.post(`${TELEGRAM_API}/sendMessage`, {
-          chat_id: chatId,
-          text: `▶️ <b>How To Use</b>\n\n1. Add balance or buy panels directly via QR.\n2. Submit payment and click 'Check Payment'.\n3. Admin verifies and sends key instantly!`,
-          parse_mode: "HTML",
-          reply_markup: { inline_keyboard: [[{ text: "🔙 Back", callback_data: "main_menu" }]] }
-        });
-      }
       else if (data === "daily_spin") {
         await axios.post(`${TELEGRAM_API}/sendMessage`, {
           chat_id: chatId,
@@ -219,15 +207,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
           reply_markup: { inline_keyboard: [[{ text: "🔙 Back", callback_data: "main_menu" }]] }
         });
       }
-      else if (data === "leaderboard") {
-        await axios.post(`${TELEGRAM_API}/sendMessage`, {
-          chat_id: chatId,
-          text: `📊 <b>Top Leaderboard</b>\n\n1. ${user.name} - ₹${user.totalSpent || 0} spent`,
-          parse_mode: "HTML",
-          reply_markup: { inline_keyboard: [[{ text: "🔙 Back", callback_data: "main_menu" }]] }
-        });
-      }
-      // Inline Admin Approval & Check Payment Logic
+      // Payment & Admin Approvals
       else if (data.startsWith("check_order_") || data.startsWith("check_deposit_")) {
         const parts = data.split("_");
         const orderId = parts[2];
@@ -239,7 +219,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
           show_alert: true
         });
 
-        const ADMIN_CHAT_ID = "880513593"; // Aapki Admin Chat ID
+        const ADMIN_CHAT_ID = "880513593";
         await axios.post(`${TELEGRAM_API}/sendMessage`, {
           chat_id: ADMIN_CHAT_ID,
           text: `🔔 <b>NEW PAYMENT VERIFICATION</b>\n\n👤 User: ${user.name} (ID: <code>${user.id}</code>)\n🆔 Order ID: <code>${orderId}</code>\n💵 Amount: ₹${amount}`,
