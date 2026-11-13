@@ -7,10 +7,16 @@ app.use(express.json());
 
 const TOKEN = config.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_API = `https://api.telegram.org/bot${TOKEN}`;
-const ADMIN_ID = 8805135936; // Aapki Admin ID (Number format)
+const ADMIN_ID = 8805135936; // Aapki Admin ID
 const UPI_ID = "9694421148@fam";
 
-// Permanent In-Memory Stock & Database
+// Dynamic Products list (Shop menu mein yahin se dikhega)
+const products = {
+  drake: "🔥 Drake Panel",
+  myth: "⚡ Myth Mod"
+};
+
+// Stock storage
 const stock = {
   drake: {
     "1h": ["DRAKE-W1S5-ISNS-Q8C7", "DRAKE-QNAR-OWPM-8UX0"],
@@ -92,7 +98,6 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
       const from = update.message.from;
       const user = getUser(from.id, from.first_name);
 
-      // 1. START COMMAND
       if (text.startsWith('/start')) {
         const menu = getMainMenuMarkup(user);
         await axios.post(`${TELEGRAM_API}/sendMessage`, {
@@ -102,8 +107,36 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
           reply_markup: menu.reply_markup
         });
       }
-      // 2. ADMIN COMMAND: /addkey panel duration key
-      // Example: /addkey drake 1h DRAKE-NEW-KEY-999
+      // 1. ADD NEW PRODUCT COMMAND: /addproduct key_name Display Name
+      else if (text.startsWith('/addproduct')) {
+        if (from.id !== ADMIN_ID) {
+          await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text: "❌ Aap admin nahi hain!" });
+          return;
+        }
+
+        const parts = text.split(" ");
+        if (parts.length < 3) {
+          await axios.post(`${TELEGRAM_API}/sendMessage`, {
+            chat_id: chatId,
+            text: "⚠️ <b>Invalid Format!</b>\nUse: <code>/addproduct key_name Display Name</code>\nExample: <code>/addproduct titan Titan Panel</code>",
+            parse_mode: "HTML"
+          });
+          return;
+        }
+
+        const productKey = parts[1].toLowerCase();
+        const productDisplayName = parts.slice(2).join(" ");
+
+        products[productKey] = productDisplayName;
+        if (!stock[productKey]) stock[productKey] = { "1h": [], "3h": [], "6h": [] };
+
+        await axios.post(`${TELEGRAM_API}/sendMessage`, {
+          chat_id: chatId,
+          text: `✅ <b>New Product Added Successfully!</b>\n\n🆔 Key: <code>${productKey}</code>\n🏷️ Name: <b>${productDisplayName}</b>\n\nAb aap isme keys dalne ke liye <code>/addkey ${productKey} 1h YOUR_KEY</code> use kar sakte hain.`,
+          parse_mode: "HTML"
+        });
+      }
+      // 2. ADD KEY COMMAND: /addkey panel duration key
       else if (text.startsWith('/addkey')) {
         if (from.id !== ADMIN_ID) {
           await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text: "❌ Aap admin nahi hain!" });
@@ -122,7 +155,12 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
 
         const panel = parts[1].toLowerCase();
         const duration = parts[2].toLowerCase();
-        const newKey = parts.slice(3).join(" "); // Agar key mein spaces ho toh combine kar lega
+        const newKey = parts.slice(3).join(" ");
+
+        if (!products[panel]) {
+          await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text: `❌ Product '${panel}' exist nahi karta! Pehle /addproduct se add karein.` });
+          return;
+        }
 
         if (!stock[panel]) stock[panel] = {};
         if (!stock[panel][duration]) stock[panel][duration] = [];
@@ -131,11 +169,11 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
 
         await axios.post(`${TELEGRAM_API}/sendMessage`, {
           chat_id: chatId,
-          text: `✅ <b>Key Successfully Added!</b>\n\n📦 Panel: <b>${panel.toUpperCase()}</b>\n⏳ Duration: <b>${duration.toUpperCase()}</b>\n🔑 Key: <code>${newKey}</code>\n📊 Total Stock in this category: <b>${stock[panel][duration].length}</b>`,
+          text: `✅ <b>Key Successfully Added!</b>\n\n📦 Panel: <b>${panel.toUpperCase()}</b>\n⏳ Duration: <b>${duration.toUpperCase()}</b>\n🔑 Key: <code>${newKey}</code>\n📊 Total Stock: <b>${stock[panel][duration].length}</b>`,
           parse_mode: "HTML"
         });
       }
-      // 3. ADMIN COMMAND: /addupdate message
+      // 3. BROADCAST UPDATE COMMAND: /addupdate message
       else if (text.startsWith('/addupdate')) {
         if (from.id !== ADMIN_ID) {
           await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text: "❌ Aap admin nahi hain!" });
@@ -165,7 +203,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
           text: `✅ Update broadcasted successfully to ${sentCount} users!`
         });
       }
-      // 4. ADMIN COMMAND: /stock
+      // 4. STOCK CHECK COMMAND: /stock
       else if (text === '/stock') {
         if (from.id !== ADMIN_ID) return;
 
@@ -211,46 +249,40 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
       else if (data === "shop") {
         await deletePrevMessage();
         const shopText = `🛒 <b>APNA PRODUCT CHUNLO!</b>\n\nSelect your panel below:`;
-        const shopMarkup = {
-          inline_keyboard: [
-            [{ text: "🔥 Drake Panel", callback_data: "panel_drake" }],
-            [{ text: "⚡ Myth Mod", callback_data: "panel_myth" }],
-            [{ text: "🔙 Main Menu", callback_data: "main_menu" }]
-          ]
-        };
-        await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text: shopText, parse_mode: "HTML", reply_markup: shopMarkup });
-      }
-      else if (data === "panel_myth") {
-        await deletePrevMessage();
-        const text = `⚡ <b>MYTH MOD PACKAGES</b>\n\nSelect duration & price:`;
         
-        const s1 = stock.myth && stock.myth["1h"] ? stock.myth["1h"].length : 0;
-        const s3 = stock.myth && stock.myth["3h"] ? stock.myth["3h"].length : 0;
-        const s6 = stock.myth && stock.myth["6h"] ? stock.myth["6h"].length : 0;
+        // Dynamic Shop Buttons generation based on `products` list
+        const shopButtons = [];
+        for (const key in products) {
+          shopButtons.push([{ text: products[key], callback_data: `panel_${key}` }]);
+        }
+        shopButtons.push([{ text: "🔙 Main Menu", callback_data: "main_menu" }]);
+
+        await axios.post(`${TELEGRAM_API}/sendMessage`, { 
+          chat_id: chatId, 
+          text: shopText, 
+          parse_mode: "HTML", 
+          reply_markup: { inline_keyboard: shopButtons } 
+        });
+      }
+      // Dynamic Panel Selection Handler
+      else if (data.startsWith("panel_")) {
+        const panelKey = data.replace("panel_", "");
+        const panelName = products[panelKey] || panelKey.toUpperCase();
+
+        await deletePrevMessage();
+        const text = `⚡ <b>${panelName} PACKAGES</b>\n\nSelect duration & price:`;
+        
+        if (!stock[panelKey]) stock[panelKey] = { "1h": [], "3h": [], "6h": [] };
+
+        const s1 = stock[panelKey]["1h"] ? stock[panelKey]["1h"].length : 0;
+        const s3 = stock[panelKey]["3h"] ? stock[panelKey]["3h"].length : 0;
+        const s6 = stock[panelKey]["6h"] ? stock[panelKey]["6h"].length : 0;
 
         const markup = {
           inline_keyboard: [
-            [{ text: s1 > 0 ? "⏳ 1 Hours - ₹14" : "❌ 1 Hours (Out of Stock)", callback_data: s1 > 0 ? "buy_myth_1h_14" : "nostock" }],
-            [{ text: s3 > 0 ? "⏳ 3 Hours - ₹39" : "❌ 3 Hours (Out of Stock)", callback_data: s3 > 0 ? "buy_myth_3h_39" : "nostock" }],
-            [{ text: s6 > 0 ? "⏳ 6 Hours - ₹72" : "❌ 6 Hours (Out of Stock)", callback_data: s6 > 0 ? "buy_myth_6h_72" : "nostock" }],
-            [{ text: "🔙 Back to Shop", callback_data: "shop" }]
-          ]
-        };
-        await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text, parse_mode: "HTML", reply_markup: markup });
-      }
-      else if (data === "panel_drake") {
-        await deletePrevMessage();
-        const text = `🔥 <b>DRAKE PANEL PACKAGES</b>\n\nSelect duration & price:`;
-        
-        const s1 = stock.drake && stock.drake["1h"] ? stock.drake["1h"].length : 0;
-        const s3 = stock.drake && stock.drake["3h"] ? stock.drake["3h"].length : 0;
-        const s6 = stock.drake && stock.drake["6h"] ? stock.drake["6h"].length : 0;
-
-        const markup = {
-          inline_keyboard: [
-            [{ text: s1 > 0 ? "⏳ 1 Hours - ₹9" : "❌ 1 Hours (Out of Stock)", callback_data: s1 > 0 ? "buy_drake_1h_9" : "nostock" }],
-            [{ text: s3 > 0 ? "⏳ 3 Hours - ₹35" : "❌ 3 Hours (Out of Stock)", callback_data: s3 > 0 ? "buy_drake_3h_35" : "nostock" }],
-            [{ text: s6 > 0 ? "⏳ 6 Hours - ₹65" : "❌ 6 Hours (Out of Stock)", callback_data: s6 > 0 ? "buy_drake_6h_65" : "nostock" }],
+            [{ text: s1 > 0 ? "⏳ 1 Hours - ₹9" : "❌ 1 Hours (Out of Stock)", callback_data: s1 > 0 ? `buy_${panelKey}_1h_9` : "nostock" }],
+            [{ text: s3 > 0 ? "⏳ 3 Hours - ₹35" : "❌ 3 Hours (Out of Stock)", callback_data: s3 > 0 ? `buy_${panelKey}_3h_35` : "nostock" }],
+            [{ text: s6 > 0 ? "⏳ 6 Hours - ₹65" : "❌ 6 Hours (Out of Stock)", callback_data: s6 > 0 ? `buy_${panelKey}_6h_65` : "nostock" }],
             [{ text: "🔙 Back to Shop", callback_data: "shop" }]
           ]
         };
@@ -499,7 +531,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
 
         await axios.post(`${TELEGRAM_API}/sendMessage`, {
           chat_id: ADMIN_ID,
-          text: `🔔  <b>NEW WALLET DEPOSIT VERIFICATION</b>\n\n👤 User Name: ${user.name}\n🆔 User ID: <code>${user.id}</code>\n🆔 Order ID: <code>${orderId}</code>\n💵 Amount: ₹${amount}\n\n👇 Click below to approve:`,
+          text: `🔔 <b>NEW WALLET DEPOSIT VERIFICATION</b>\n\n👤 User Name: ${user.name}\n🆔 User ID: <code>${user.id}</code>\n🆔 Order ID: <code>${orderId}</code>\n💵 Amount: ₹${amount}\n\n👇 Click below to approve:`,
           parse_mode: "HTML",
           reply_markup: {
             inline_keyboard: [[
