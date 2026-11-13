@@ -1,7 +1,7 @@
 const express = require('express');
 const axios = require('axios');
 const config = require('./config');
-const keysData = require('./keysdata'); // Permanent keysdata.js linked
+const keysData = require('./keysdata'); // keysdata.js linked for stock management
 
 const app = express();
 app.use(express.json());
@@ -128,11 +128,16 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
       else if (data === "panel_myth") {
         await deletePrevMessage();
         const text = `⚡ <b>MYTH MOD PACKAGES</b>\n\nSelect duration & price:`;
+        
+        const s1 = keysData.myth && keysData.myth["1h"] ? keysData.myth["1h"].length : 0;
+        const s3 = keysData.myth && keysData.myth["3h"] ? keysData.myth["3h"].length : 0;
+        const s6 = keysData.myth && keysData.myth["6h"] ? keysData.myth["6h"].length : 0;
+
         const markup = {
           inline_keyboard: [
-            [{ text: "⏳ 1 Hours - ₹14", callback_data: "buy_myth_1h_14" }],
-            [{ text: "⏳ 3 Hours - ₹39", callback_data: "buy_myth_3h_39" }],
-            [{ text: "⏳ 6 Hours - ₹72", callback_data: "buy_myth_6h_72" }],
+            [{ text: s1 > 0 ? "⏳ 1 Hours - ₹14" : "❌ 1 Hours (Out of Stock)", callback_data: s1 > 0 ? "buy_myth_1h_14" : "nostock" }],
+            [{ text: s3 > 0 ? "⏳ 3 Hours - ₹39" : "❌ 3 Hours (Out of Stock)", callback_data: s3 > 0 ? "buy_myth_3h_39" : "nostock" }],
+            [{ text: s6 > 0 ? "⏳ 6 Hours - ₹72" : "❌ 6 Hours (Out of Stock)", callback_data: s6 > 0 ? "buy_myth_6h_72" : "nostock" }],
             [{ text: "🔙 Back to Shop", callback_data: "shop" }]
           ]
         };
@@ -141,15 +146,27 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
       else if (data === "panel_drake") {
         await deletePrevMessage();
         const text = `🔥 <b>DRAKE PANEL PACKAGES</b>\n\nSelect duration & price:`;
+        
+        const s1 = keysData.drake && keysData.drake["1h"] ? keysData.drake["1h"].length : 0;
+        const s3 = keysData.drake && keysData.drake["3h"] ? keysData.drake["3h"].length : 0;
+        const s6 = keysData.drake && keysData.drake["6h"] ? keysData.drake["6h"].length : 0;
+
         const markup = {
           inline_keyboard: [
-            [{ text: "⏳ 1 Hours - ₹9", callback_data: "buy_drake_1h_9" }],
-            [{ text: "⏳ 3 Hours - ₹35", callback_data: "buy_drake_3h_35" }],
-            [{ text: "⏳ 6 Hours - ₹65", callback_data: "buy_drake_6h_65" }],
+            [{ text: s1 > 0 ? "⏳ 1 Hours - ₹9" : "❌ 1 Hours (Out of Stock)", callback_data: s1 > 0 ? "buy_drake_1h_9" : "nostock" }],
+            [{ text: s3 > 0 ? "⏳ 3 Hours - ₹35" : "❌ 3 Hours (Out of Stock)", callback_data: s3 > 0 ? "buy_drake_3h_35" : "nostock" }],
+            [{ text: s6 > 0 ? "⏳ 6 Hours - ₹65" : "❌ 6 Hours (Out of Stock)", callback_data: s6 > 0 ? "buy_drake_6h_65" : "nostock" }],
             [{ text: "🔙 Back to Shop", callback_data: "shop" }]
           ]
         };
         await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text, parse_mode: "HTML", reply_markup: markup });
+      }
+      else if (data === "nostock") {
+        await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, {
+          callback_query_id: cq.id,
+          text: "❌ Yeh package abhi Out of Stock hai!",
+          show_alert: true
+        });
       }
       else if (data.startsWith("buy_")) {
         const parts = data.split("_");
