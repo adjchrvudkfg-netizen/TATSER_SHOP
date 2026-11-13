@@ -9,7 +9,7 @@ app.use(express.json());
 
 const TOKEN = config.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_API = `https://api.telegram.org/bot${TOKEN}`;
-const ADMIN_ID = "880513593"; // Aapka Admin / Channel ID
+const ADMIN_ID = "880513593"; 
 
 const db = {
   users: {}
@@ -20,7 +20,7 @@ function getUser(userId, firstName) {
     db.users[userId] = {
       id: userId,
       name: firstName || "User",
-      balance: 15.00, // Default starting balance
+      balance: 15.00,
       totalReferrals: 0,
       lifeTimeEarned: 0.00,
       totalPurchases: 0,
@@ -148,16 +148,14 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
         };
         await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text, parse_mode: "HTML", reply_markup: markup });
       }
-      // WALLET BALANCE CHECK & INSTANT PURCHASE / QR GENERATION
+      // WALLET BALANCE CHECK & INSTANT PURCHASE OR QR
       else if (data.startsWith("buy_")) {
         const parts = data.split("_");
-        const panel = parts[1]; // myth or drake
-        const duration = parts[2]; // 1h, 3h, 6h
+        const panel = parts[1];
+        const duration = parts[2];
         const price = parseInt(parts[3]);
 
-        // CHECK IF WALLET BALANCE IS SUFFICIENT
         if (user.balance >= price) {
-          // Deduct from wallet & deliver key instantly
           user.balance -= price;
           user.totalPurchases = (user.totalPurchases || 0) + 1;
           user.totalSpent = (user.totalSpent || 0) + price;
@@ -174,11 +172,9 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
             }
           });
         } else {
-          // INSUFFICIENT BALANCE -> SHOW QR CODE
+          // Insufficient balance -> Delete old message and show QR
           await deletePrevMessage();
           const orderId = Math.floor(100000 + Math.random() * 900000);
-          const shortfall = price - user.balance;
-
           const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=upi://pay?pa=9114959377@fampay&pn=TATSER%20SHOP&am=${price}&cu=INR&tn=Order_${orderId}`;
 
           await axios.post(`${TELEGRAM_API}/sendPhoto`, {
@@ -195,7 +191,6 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
           });
         }
       }
-      // ADD BALANCE KEYPAD
       else if (data === "add_balance") {
         await deletePrevMessage();
         user.customInput = "0";
@@ -226,7 +221,6 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
         }
         await deletePrevMessage();
         const orderId = Math.floor(100000 + Math.random() * 900000);
-        
         const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=upi://pay?pa=9114959377@fampay&pn=TATSER%20SHOP&am=${amt}&cu=INR&tn=Deposit_${orderId}`;
 
         await axios.post(`${TELEGRAM_API}/sendPhoto`, {
