@@ -834,3 +834,5 @@ app.listen(PORT, async () => {
       await axios.get(`${TELEGRAM_API}/setWebhook?url=${renderUrl}/webhook/${TOKEN}`);
       console.log(`Webhook set successfully!`);
     } catch (e) {}
+  }
+});
