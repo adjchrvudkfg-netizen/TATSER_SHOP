@@ -9,7 +9,7 @@ app.use(express.json());
 
 const TOKEN = config.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_API = `https://api.telegram.org/bot${TOKEN}`;
-const ADMIN_ID = "880513593"; // Yahan apna Admin Channel ID ya Group ID daalein (jaise -100xxxxxxxxxx)
+const ADMIN_ID = "880513593"; // Aapka Admin / Channel ID
 
 const db = {
   users: {}
@@ -20,7 +20,7 @@ function getUser(userId, firstName) {
     db.users[userId] = {
       id: userId,
       name: firstName || "User",
-      balance: 15.00,
+      balance: 15.00, // Default starting balance
       totalReferrals: 0,
       lifeTimeEarned: 0.00,
       totalPurchases: 0,
@@ -148,35 +148,43 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
         };
         await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text, parse_mode: "HTML", reply_markup: markup });
       }
+      // WALLET BALANCE CHECK & INSTANT PURCHASE / QR GENERATION
       else if (data.startsWith("buy_")) {
-        await deletePrevMessage();
         const parts = data.split("_");
-        const panel = parts[1];
-        const duration = parts[2];
-        const price = parts[3];
-        const orderId = Math.floor(100000 + Math.random() * 900000);
+        const panel = parts[1]; // myth or drake
+        const duration = parts[2]; // 1h, 3h, 6h
+        const price = parseInt(parts[3]);
 
-        // Aapka exact QR code image link jo screenshot 6527.png mein hai
-        const qrUrl = "https://i.ibb.co/3yk7v8z/qr-code.png"; // Aap yahan apna direct image link daal sakte hain, ya niche diya gaya generator use karein
+        // CHECK IF WALLET BALANCE IS SUFFICIENT
+        if (user.balance >= price) {
+          // Deduct from wallet & deliver key instantly
+          user.balance -= price;
+          user.totalPurchases = (user.totalPurchases || 0) + 1;
+          user.totalSpent = (user.totalSpent || 0) + price;
 
-        await axios.post(`${TELEGRAM_API}/sendPhoto`, {
-          chat_id: chatId,
-          photo: "https://files.catbox.moe/custom_qr.jpg", // Replace with your exact QR image URL if hosted, or use dynamic QR below:
-          caption: `💳 <b>DIRECT PURCHASE QR</b>\n\n📦 Product: ${panel.toUpperCase()} (${duration})\n💵 Price: ₹${price}\n🆔 Order ID: <code>${orderId}</code>\n\n<i>Scan and pay via UPI, then click 'Check Payment' below:</i>`,
-          parse_mode: "HTML",
-          reply_markup: {
-            inline_keyboard: [
-              [{ text: "🔄 Check Payment", callback_data: `check_prod_${orderId}_${panel}_${duration}_${price}` }],
-              [{ text: "🔙 Back", callback_data: "shop" }]
-            ]
-          }
-        }).catch(async () => {
-          // Fallback to QR generator if direct image fails
-          const fallbackQr = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=upi://pay?pa=9114959377@fampay&pn=TATSER%20SHOP&am=${price}&cu=INR&tn=Order_${orderId}`;
+          await deletePrevMessage();
+          const licenseKey = getPanelKeySafe(panel, duration);
+
+          await axios.post(`${TELEGRAM_API}/sendMessage`, {
+            chat_id: chatId,
+            text: `✅ <b>Purchase Successful via Wallet!</b>\n\n📦 Product: <b>${panel.toUpperCase()} (${duration.toUpperCase()})</b>\n💵 Amount Deducted: ₹${price}\n💰 Remaining Balance: ₹${user.balance.toFixed(2)}\n\n🔑 <b>Your Key:</b> <code>${licenseKey}</code>`,
+            parse_mode: "HTML",
+            reply_markup: {
+              inline_keyboard: [[{ text: "🔙 Main Menu", callback_data: "main_menu" }]]
+            }
+          });
+        } else {
+          // INSUFFICIENT BALANCE -> SHOW QR CODE
+          await deletePrevMessage();
+          const orderId = Math.floor(100000 + Math.random() * 900000);
+          const shortfall = price - user.balance;
+
+          const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=upi://pay?pa=9114959377@fampay&pn=TATSER%20SHOP&am=${price}&cu=INR&tn=Order_${orderId}`;
+
           await axios.post(`${TELEGRAM_API}/sendPhoto`, {
             chat_id: chatId,
-            photo: fallbackQr,
-            caption: `💳 <b>DIRECT PURCHASE QR</b>\n\n📦 Product: ${panel.toUpperCase()} (${duration})\n💵 Price: ₹${price}\n🆔 Order ID: <code>${orderId}</code>\n\n<i>Scan and pay via UPI, then click 'Check Payment' below:</i>`,
+            photo: qrUrl,
+            caption: `⚠️ <b>Insufficient Wallet Balance!</b>\n\nRequired: ₹${price} | Your Balance: ₹${user.balance.toFixed(2)}\n📦 Product: ${panel.toUpperCase()} (${duration})\n🆔 Order ID: <code>${orderId}</code>\n\n<i>Please scan and pay ₹${price} via UPI, then click 'Check Payment' below:</i>`,
             parse_mode: "HTML",
             reply_markup: {
               inline_keyboard: [
@@ -185,9 +193,9 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
               ]
             }
           });
-        });
+        }
       }
-      // ADD BALANCE KEYPAD LOGIC (Strict parsing to prevent string glitches)
+      // ADD BALANCE KEYPAD
       else if (data === "add_balance") {
         await deletePrevMessage();
         user.customInput = "0";
