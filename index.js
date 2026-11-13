@@ -189,6 +189,20 @@ Aap yahan se automated digital panels kharid sakte hain aur balance add kar sakt
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`TATSER Bot is running on port ${PORT}`);
+
+  // Render ka official external URL automatic utha kar Telegram par webhook set kar dega
+  const renderUrl = process.env.RENDER_EXTERNAL_URL;
+  if (renderUrl) {
+    const webhookUrl = `${renderUrl}/webhook/${TOKEN}`;
+    try {
+      await axios.get(`${TELEGRAM_API}/setWebhook?url=${webhookUrl}`);
+      console.log(`✅ Webhook Successfully Set: ${webhookUrl}`);
+    } catch (err) {
+      console.log("❌ Failed to set webhook:", err.message);
+    }
+  } else {
+    console.log("⚠️ RENDER_EXTERNAL_URL not found, webhook not set automatically.");
+  }
 });
