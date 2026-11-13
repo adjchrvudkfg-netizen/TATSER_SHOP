@@ -1,5 +1,7 @@
 const express = require('express');
 const axios = require('axios');
+const fs = require('fs');
+const path = require('path');
 const config = require('./config');
 
 const app = express();
@@ -7,37 +9,61 @@ app.use(express.json());
 
 const TOKEN = config.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_API = `https://api.telegram.org/bot${TOKEN}`;
-const ADMIN_ID = 8805135936; // Aapki Admin ID
+const ADMIN_ID = 8805135936; 
 const UPI_ID = "9694421148@fam";
 
-// Dynamic Products list (Shop menu mein yahin se dikhega)
-const products = {
-  drake: "🔥 Drake Panel",
-  myth: "⚡ Myth Mod"
-};
+// Permanent storage file path on Render/Local
+const dbFilePath = path.join(__dirname, 'shop_db.json');
 
-// Stock storage
-const stock = {
-  drake: {
-    "1h": ["DRAKE-W1S5-ISNS-Q8C7", "DRAKE-QNAR-OWPM-8UX0"],
-    "3h": ["DRAKE-LO4G-E905-PFHT"],
-    "6h": ["DRAKE-YG3M-M37S-LEY2"]
+// Default Database Structure
+let shopDb = {
+  products: {
+    drake: "🔥 Drake Panel",
+    myth: "⚡ Myth Mod"
   },
-  myth: {
-    "1h": ["MYTH-1H-KEY111", "MYTH-1H-KEY222"],
-    "3h": ["MYTH-3H-KEY111"],
-    "6h": ["MYTH-6H-KEY111"]
-  }
-};
-
-const db = {
+  prices: {
+    drake: { "1h": 9, "3h": 35, "6h": 65 },
+    myth: { "1h": 14, "3h": 39, "6h": 72 }
+  },
+  stock: {
+    drake: {
+      "1h": ["DRAKE-W1S5-ISNS-Q8C7", "DRAKE-QNAR-OWPM-8UX0"],
+      "3h": ["DRAKE-LO4G-E905-PFHT"],
+      "6h": ["DRAKE-YG3M-M37S-LEY2"]
+    },
+    myth: {
+      "1h": ["MYTH-1H-KEY111", "MYTH-1H-KEY222"],
+      "3h": ["MYTH-3H-KEY111"],
+      "6h": ["MYTH-6H-KEY111"]
+    }
+  },
   users: {},
   processedOrders: {}
 };
 
+// Load saved data from file if exists
+try {
+  if (fs.existsSync(dbFilePath)) {
+    const raw = fs.readFileSync(dbFilePath, 'utf8');
+    const parsed = JSON.parse(raw);
+    if (parsed.products) shopDb.products = parsed.products;
+    if (parsed.prices) shopDb.prices = parsed.prices;
+    if (parsed.stock) shopDb.stock = parsed.stock;
+    if (parsed.users) shopDb.users = parsed.users;
+    if (parsed.processedOrders) shopDb.processedOrders = parsed.processedOrders;
+  }
+} catch (e) {}
+
+// Save data permanently function
+function saveData() {
+  try {
+    fs.writeFileSync(dbFilePath, JSON.stringify(shopDb, null, 2), 'utf8');
+  } catch (e) {}
+}
+
 function getUser(userId, firstName) {
-  if (!db.users[userId]) {
-    db.users[userId] = {
+  if (!shopDb.users[userId]) {
+    shopDb.users[userId] = {
       id: userId,
       name: firstName || "User",
       balance: 0.00,
@@ -48,8 +74,9 @@ function getUser(userId, firstName) {
       customInput: "0",
       lastSpinTime: 0
     };
+    saveData();
   }
-  return db.users[userId];
+  return shopDb.users[userId];
 }
 
 function getMainMenuMarkup(user) {
@@ -107,7 +134,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
           reply_markup: menu.reply_markup
         });
       }
-      // 1. ADD NEW PRODUCT COMMAND: /addproduct key_name Display Name
+      // 1. ADD NEW PRODUCT COMMAND: /addproduct phantom Phantom Mod
       else if (text.startsWith('/addproduct')) {
         if (from.id !== ADMIN_ID) {
           await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text: "❌ Aap admin nahi hain!" });
@@ -118,7 +145,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
         if (parts.length < 3) {
           await axios.post(`${TELEGRAM_API}/sendMessage`, {
             chat_id: chatId,
-            text: "⚠️ <b>Invalid Format!</b>\nUse: <code>/addproduct key_name Display Name</code>\nExample: <code>/addproduct titan Titan Panel</code>",
+            text: "⚠️ <b>Invalid Format!</b>\nUse: <code>/addproduct key_name Display Name</code>\nExample: <code>/addproduct phantom Phantom Mod</code>",
             parse_mode: "HTML"
           });
           return;
@@ -127,16 +154,54 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
         const productKey = parts[1].toLowerCase();
         const productDisplayName = parts.slice(2).join(" ");
 
-        products[productKey] = productDisplayName;
-        if (!stock[productKey]) stock[productKey] = { "1h": [], "3h": [], "6h": [] };
+        shopDb.products[productKey] = productDisplayName;
+        if (!shopDb.stock[productKey]) shopDb.stock[productKey] = { "1h": [], "3h": [], "6h": [] };
+        if (!shopDb.prices[productKey]) shopDb.prices[productKey] = { "1h": 10, "3h": 30, "6h": 60 };
+        saveData();
 
         await axios.post(`${TELEGRAM_API}/sendMessage`, {
           chat_id: chatId,
-          text: `✅ <b>New Product Added Successfully!</b>\n\n🆔 Key: <code>${productKey}</code>\n🏷️ Name: <b>${productDisplayName}</b>\n\nAb aap isme keys dalne ke liye <code>/addkey ${productKey} 1h YOUR_KEY</code> use kar sakte hain.`,
+          text: `✅ <b>Product Added & Saved Permanently!</b>\n\n🆔 Key: <code>${productKey}</code>\n🏷️ Name: <b>${productDisplayName}</b>\n\nAb price set karne ke liye:\n<code>/addprice ${productKey} 1h 49</code>\n\nKeys dalne ke liye:\n<code>/addkey ${productKey} 1h YOUR_KEY</code>`,
           parse_mode: "HTML"
         });
       }
-      // 2. ADD KEY COMMAND: /addkey panel duration key
+      // 2. ADD PRICE COMMAND: /addprice panel duration price
+      else if (text.startsWith('/addprice')) {
+        if (from.id !== ADMIN_ID) {
+          await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text: "❌ Aap admin nahi hain!" });
+          return;
+        }
+
+        const parts = text.split(" ");
+        if (parts.length < 4) {
+          await axios.post(`${TELEGRAM_API}/sendMessage`, {
+            chat_id: chatId,
+            text: "⚠️ <b>Invalid Format!</b>\nUse: <code>/addprice panel duration price</code>\nExample: <code>/addprice phantom 1h 49</code>",
+            parse_mode: "HTML"
+          });
+          return;
+        }
+
+        const panel = parts[1].toLowerCase();
+        const duration = parts[2].toLowerCase();
+        const price = parseInt(parts[3]);
+
+        if (!shopDb.products[panel]) {
+          await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text: `❌ Product '${panel}' exist nahi karta! Pehle /addproduct se add karein.` });
+          return;
+        }
+
+        if (!shopDb.prices[panel]) shopDb.prices[panel] = {};
+        shopDb.prices[panel][duration] = price;
+        saveData();
+
+        await axios.post(`${TELEGRAM_API}/sendMessage`, {
+          chat_id: chatId,
+          text: `✅ <b>Price Updated & Saved!</b>\n\n📦 Panel: <b>${panel.toUpperCase()}</b>\n⏳ Duration: <b>${duration.toUpperCase()}</b>\n💵 New Price: <b>₹${price}</b>`,
+          parse_mode: "HTML"
+        });
+      }
+      // 3. ADD KEY COMMAND: /addkey panel duration key
       else if (text.startsWith('/addkey')) {
         if (from.id !== ADMIN_ID) {
           await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text: "❌ Aap admin nahi hain!" });
@@ -157,23 +222,24 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
         const duration = parts[2].toLowerCase();
         const newKey = parts.slice(3).join(" ");
 
-        if (!products[panel]) {
-          await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text: `❌ Product '${panel}' exist nahi karta! Pehle /addproduct se add karein.` });
+        if (!shopDb.products[panel]) {
+          await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text: `❌ Product '${panel}' exist nahi karta!` });
           return;
         }
 
-        if (!stock[panel]) stock[panel] = {};
-        if (!stock[panel][duration]) stock[panel][duration] = [];
+        if (!shopDb.stock[panel]) shopDb.stock[panel] = {};
+        if (!shopDb.stock[panel][duration]) shopDb.stock[panel][duration] = [];
 
-        stock[panel][duration].push(newKey);
+        shopDb.stock[panel][duration].push(newKey);
+        saveData();
 
         await axios.post(`${TELEGRAM_API}/sendMessage`, {
           chat_id: chatId,
-          text: `✅ <b>Key Successfully Added!</b>\n\n📦 Panel: <b>${panel.toUpperCase()}</b>\n⏳ Duration: <b>${duration.toUpperCase()}</b>\n🔑 Key: <code>${newKey}</code>\n📊 Total Stock: <b>${stock[panel][duration].length}</b>`,
+          text: `✅ <b>Key Successfully Added & Saved!</b>\n\n📦 Panel: <b>${panel.toUpperCase()}</b>\n⏳ Duration: <b>${duration.toUpperCase()}</b>\n🔑 Key: <code>${newKey}</code>\n📊 Total Stock: <b>${shopDb.stock[panel][duration].length}</b>`,
           parse_mode: "HTML"
         });
       }
-      // 3. BROADCAST UPDATE COMMAND: /addupdate message
+      // 4. BROADCAST UPDATE COMMAND: /addupdate message
       else if (text.startsWith('/addupdate')) {
         if (from.id !== ADMIN_ID) {
           await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text: "❌ Aap admin nahi hain!" });
@@ -187,7 +253,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
         }
 
         let sentCount = 0;
-        for (const uid in db.users) {
+        for (const uid in shopDb.users) {
           try {
             await axios.post(`${TELEGRAM_API}/sendMessage`, {
               chat_id: uid,
@@ -203,15 +269,15 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
           text: `✅ Update broadcasted successfully to ${sentCount} users!`
         });
       }
-      // 4. STOCK CHECK COMMAND: /stock
+      // 5. STOCK CHECK COMMAND: /stock
       else if (text === '/stock') {
         if (from.id !== ADMIN_ID) return;
 
         let stockText = `📊 <b>CURRENT STOCK STATUS</b>\n\n`;
-        for (const p in stock) {
+        for (const p in shopDb.stock) {
           stockText += `🔥 <b>${p.toUpperCase()}</b>:\n`;
-          for (const d in stock[p]) {
-            stockText += `  - ${d}: <b>${stock[p][d].length} keys left</b>\n`;
+          for (const d in shopDb.stock[p]) {
+            stockText += `  - ${d}: <b>${shopDb.stock[p][d].length} keys left</b>\n`;
           }
         }
 
@@ -250,10 +316,9 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
         await deletePrevMessage();
         const shopText = `🛒 <b>APNA PRODUCT CHUNLO!</b>\n\nSelect your panel below:`;
         
-        // Dynamic Shop Buttons generation based on `products` list
         const shopButtons = [];
-        for (const key in products) {
-          shopButtons.push([{ text: products[key], callback_data: `panel_${key}` }]);
+        for (const key in shopDb.products) {
+          shopButtons.push([{ text: shopDb.products[key], callback_data: `panel_${key}` }]);
         }
         shopButtons.push([{ text: "🔙 Main Menu", callback_data: "main_menu" }]);
 
@@ -264,25 +329,29 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
           reply_markup: { inline_keyboard: shopButtons } 
         });
       }
-      // Dynamic Panel Selection Handler
       else if (data.startsWith("panel_")) {
         const panelKey = data.replace("panel_", "");
-        const panelName = products[panelKey] || panelKey.toUpperCase();
+        const panelName = shopDb.products[panelKey] || panelKey.toUpperCase();
 
         await deletePrevMessage();
         const text = `⚡ <b>${panelName} PACKAGES</b>\n\nSelect duration & price:`;
         
-        if (!stock[panelKey]) stock[panelKey] = { "1h": [], "3h": [], "6h": [] };
+        if (!shopDb.stock[panelKey]) shopDb.stock[panelKey] = { "1h": [], "3h": [], "6h": [] };
+        if (!shopDb.prices[panelKey]) shopDb.prices[panelKey] = { "1h": 10, "3h": 30, "6h": 60 };
 
-        const s1 = stock[panelKey]["1h"] ? stock[panelKey]["1h"].length : 0;
-        const s3 = stock[panelKey]["3h"] ? stock[panelKey]["3h"].length : 0;
-        const s6 = stock[panelKey]["6h"] ? stock[panelKey]["6h"].length : 0;
+        const p1 = shopDb.prices[panelKey]["1h"] || 10;
+        const p3 = shopDb.prices[panelKey]["3h"] || 30;
+        const p6 = shopDb.prices[panelKey]["6h"] || 60;
+
+        const s1 = shopDb.stock[panelKey]["1h"] ? shopDb.stock[panelKey]["1h"].length : 0;
+        const s3 = shopDb.stock[panelKey]["3h"] ? shopDb.stock[panelKey]["3h"].length : 0;
+        const s6 = shopDb.stock[panelKey]["6h"] ? shopDb.stock[panelKey]["6h"].length : 0;
 
         const markup = {
           inline_keyboard: [
-            [{ text: s1 > 0 ? "⏳ 1 Hours - ₹9" : "❌ 1 Hours (Out of Stock)", callback_data: s1 > 0 ? `buy_${panelKey}_1h_9` : "nostock" }],
-            [{ text: s3 > 0 ? "⏳ 3 Hours - ₹35" : "❌ 3 Hours (Out of Stock)", callback_data: s3 > 0 ? `buy_${panelKey}_3h_35` : "nostock" }],
-            [{ text: s6 > 0 ? "⏳ 6 Hours - ₹65" : "❌ 6 Hours (Out of Stock)", callback_data: s6 > 0 ? `buy_${panelKey}_6h_65` : "nostock" }],
+            [{ text: s1 > 0 ? `⏳ 1 Hours - ₹${p1}` : `❌ 1 Hours (Out of Stock)`, callback_data: s1 > 0 ? `buy_${panelKey}_1h_${p1}` : "nostock" }],
+            [{ text: s3 > 0 ? `⏳ 3 Hours - ₹${p3}` : `❌ 3 Hours (Out of Stock)`, callback_data: s3 > 0 ? `buy_${panelKey}_3h_${p3}` : "nostock" }],
+            [{ text: s6 > 0 ? `⏳ 6 Hours - ₹${p6}` : `❌ 6 Hours (Out of Stock)`, callback_data: s6 > 0 ? `buy_${panelKey}_6h_${p6}` : "nostock" }],
             [{ text: "🔙 Back to Shop", callback_data: "shop" }]
           ]
         };
@@ -301,7 +370,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
         const duration = parts[2];
         const price = parseInt(parts[3]);
 
-        if (!stock[panel] || !stock[panel][duration] || stock[panel][duration].length === 0) {
+        if (!shopDb.stock[panel] || !shopDb.stock[panel][duration] || shopDb.stock[panel][duration].length === 0) {
           await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, {
             callback_query_id: cq.id,
             text: "❌ Out of Stock! Filhal yeh key available nahi hai.",
@@ -316,10 +385,12 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
           user.totalSpent = (user.totalSpent || 0) + price;
 
           await deletePrevMessage();
-          const licenseKey = stock[panel][duration].shift();
+          const licenseKey = shopDb.stock[panel][duration].shift();
+          saveData();
 
           if (!licenseKey) {
             user.balance += price;
+            saveData();
             await axios.post(`${TELEGRAM_API}/sendMessage`, {
               chat_id: chatId,
               text: `❌ <b>Out of Stock!</b>\n\nKeys khatam ho chuki hain. Aapka ₹${price} refund kar diya gaya hai.`,
@@ -482,6 +553,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
         user.lastSpinTime = now;
         const wonAmount = parseFloat((Math.random() * (1.00 - 0.10) + 0.10).toFixed(2));
         user.balance += wonAmount;
+        saveData();
 
         await deletePrevMessage();
         await axios.post(`${TELEGRAM_API}/sendMessage`, {
@@ -549,7 +621,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
         const price = parseFloat(parts[5]);
         const orderId = parts[6];
 
-        if (db.processedOrders[orderId]) {
+        if (shopDb.processedOrders[orderId]) {
           await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, {
             callback_query_id: cq.id,
             text: "⚠️ Yeh order pehle hi process ho chuka hai!",
@@ -558,7 +630,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
           return;
         }
 
-        if (!stock[panel] || !stock[panel][duration] || stock[panel][duration].length === 0) {
+        if (!shopDb.stock[panel] || !shopDb.stock[panel][duration] || shopDb.stock[panel][duration].length === 0) {
           await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, {
             callback_query_id: cq.id,
             text: "❌ Out of Stock! Key available nahi hai.",
@@ -567,14 +639,15 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
           return;
         }
 
-        db.processedOrders[orderId] = true;
+        shopDb.processedOrders[orderId] = true;
 
-        if (db.users[targetUserId]) {
-          db.users[targetUserId].totalPurchases = (db.users[targetUserId].totalPurchases || 0) + 1;
-          db.users[targetUserId].totalSpent = (db.users[targetUserId].totalSpent || 0) + price;
+        if (shopDb.users[targetUserId]) {
+          shopDb.users[targetUserId].totalPurchases = (shopDb.users[targetUserId].totalPurchases || 0) + 1;
+          shopDb.users[targetUserId].totalSpent = (shopDb.users[targetUserId].totalSpent || 0) + price;
         }
 
-        const licenseKey = stock[panel][duration].shift();
+        const licenseKey = shopDb.stock[panel][duration].shift();
+        saveData();
 
         await axios.post(`${TELEGRAM_API}/editMessageText`, {
           chat_id: chatId,
@@ -596,7 +669,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
         const amount = parseFloat(parts[3]);
         const orderId = parts[4];
 
-        if (db.processedOrders[orderId]) {
+        if (shopDb.processedOrders[orderId]) {
           await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, {
             callback_query_id: cq.id,
             text: "⚠️ Yeh deposit pehle hi approve ho chuka hai!",
@@ -604,10 +677,11 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
           });
           return;
         }
-        db.processedOrders[orderId] = true;
+        shopDb.processedOrders[orderId] = true;
 
-        if (db.users[targetUserId]) {
-          db.users[targetUserId].balance += amount;
+        if (shopDb.users[targetUserId]) {
+          shopDb.users[targetUserId].balance += amount;
+          saveData();
         }
 
         await axios.post(`${TELEGRAM_API}/editMessageText`, {
@@ -619,7 +693,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
 
         await axios.post(`${TELEGRAM_API}/sendMessage`, {
           chat_id: targetUserId,
-          text: `✅ <b>Balance Added Successfully!</b>\n\n💵 Amount: <b>₹${amount}</b> added to your wallet.\n💰 New Balance: ₹${db.users[targetUserId].balance.toFixed(2)}`,
+          text: `✅ <b>Balance Added Successfully!</b>\n\n💵 Amount: <b>₹${amount}</b> added to your wallet.\n💰 New Balance: ₹${shopDb.users[targetUserId].balance.toFixed(2)}`,
           parse_mode: "HTML",
           reply_markup: { inline_keyboard: [[{ text: "🔙 Menu", callback_data: "main_menu" }]] }
         }).catch(() => {});
@@ -629,7 +703,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
         const targetUserId = parts[1];
         const orderId = parts[2];
 
-        if (db.processedOrders[orderId]) {
+        if (shopDb.processedOrders[orderId]) {
           await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, {
             callback_query_id: cq.id,
             text: "⚠️ Yeh order pehle hi handle ho chuka hai!",
@@ -637,7 +711,8 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
           });
           return;
         }
-        db.processedOrders[orderId] = true;
+        shopDb.processedOrders[orderId] = true;
+        saveData();
 
         await axios.post(`${TELEGRAM_API}/editMessageText`, {
           chat_id: chatId,
@@ -759,5 +834,3 @@ app.listen(PORT, async () => {
       await axios.get(`${TELEGRAM_API}/setWebhook?url=${renderUrl}/webhook/${TOKEN}`);
       console.log(`Webhook set successfully!`);
     } catch (e) {}
-  }
-});
