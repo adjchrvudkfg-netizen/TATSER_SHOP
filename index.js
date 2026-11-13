@@ -9,7 +9,8 @@ app.use(express.json());
 
 const TOKEN = config.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_API = `https://api.telegram.org/bot${TOKEN}`;
-const ADMIN_ID = "880513593"; // Aapki Admin Chat ID / Group ID
+const ADMIN_ID = "880513593"; // Aapki Admin Chat ID / Channel ID
+const UPI_ID = "9694421148@fam"; // Aapka FamPay UPI ID
 
 const db = {
   users: {}
@@ -20,7 +21,7 @@ function getUser(userId, firstName) {
     db.users[userId] = {
       id: userId,
       name: firstName || "User",
-      balance: 15.00,
+      balance: 0.00, // Starting balance set to 0.00 as requested
       totalReferrals: 0,
       lifeTimeEarned: 0.00,
       totalPurchases: 0,
@@ -38,27 +39,38 @@ function getPanelKeySafe(panelKey, duration) {
   return `TATSER-${panelKey.toUpperCase()}-${duration}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
 }
 
+// Vetlam style Rich Welcome Menu with TATSER branding and ₹0 balance
 function getMainMenuMarkup(user) {
   const usdBal = (user.balance / config.CURRENCY_RATE).toFixed(2);
   
   const welcomeText = 
-`⚡ - <b>TATSER PANEL SHOP</b> - ⚡
+`🌸 - <b>TATSER PANEL SHOP</b> - 🌸
 
-🌸 Hello, <code>${user.name}</code> !
+👤 Hello, <code>${user.name}</code> !
 
 🔑 <b>Premium digital keys, instant delivery.</b>
+
+➖ 🛒 <b>Wide product catalog</b>
+➖ ⚡ <b>Instant key delivery</b>
+➖ 💲 <b>Multiple payment gateways</b>
+➖ ☘️ <b>Referrals & spin-to-win</b>
+➖ 🆔 <b>24/7 admin support</b>
 
 ──────────────────────
 👤 <b>User ID:</b> ${user.id}
 💰 <b>Wallet Balance:</b> ₹${user.balance.toFixed(2)} (~$${usdBal})
-──────────────────────`;
+──────────────────────
+
+<i>Tap any button below to begin.</i>`;
 
   const reply_markup = {
     inline_keyboard: [
       [{ text: "🛍️ Shop", callback_data: "shop" }],
       [{ text: "💳 Add Balance", callback_data: "add_balance" }, { text: "📦 My Orders", callback_data: "my_orders" }],
-      [{ text: "👤 My Profile", callback_data: "profile" }, { text: "🔗 Referral", callback_data: "referral" }],
-      [{ text: "🎡 Daily Spin", callback_data: "daily_spin" }, { text: "📞 Support", callback_data: "support" }]
+      [{ text: "👤 My Profile", callback_data: "profile" }, { text: "▶️ How To Use", callback_data: "how_to_use" }],
+      [{ text: "🔗 Referral", callback_data: "referral" }, { text: "🎡 Daily Spin", callback_data: "daily_spin" }],
+      [{ text: "📞 Support", callback_data: "support" }],
+      [{ text: "💎 Selling Proof", url: "https://t.me/your_selling_proof" }, { text: "📊 Leaderboard", callback_data: "leaderboard" }]
     ]
   };
 
@@ -173,14 +185,12 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
         } else {
           await deletePrevMessage();
           const orderId = Math.floor(100000 + Math.random() * 900000);
-          
-          // Fallback dynamic QR generator
-          const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=upi://pay?pa=9114959377@fampay&pn=TATSER%20SHOP&am=${price}&cu=INR&tn=Order_${orderId}`;
+          const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=upi://pay?pa=${UPI_ID}&pn=TATSER%20SHOP&am=${price}&cu=INR&tn=Order_${orderId}`;
 
           await axios.post(`${TELEGRAM_API}/sendPhoto`, {
             chat_id: chatId,
             photo: qrUrl,
-            caption: `⚠️ <b>Insufficient Wallet Balance!</b>\n\nRequired: ₹${price} | Your Balance: ₹${user.balance.toFixed(2)}\n📦 Product: ${panel.toUpperCase()} (${duration})\n🆔 Order ID: <code>${orderId}</code>\n\n<i>Please scan and pay ₹${price} via UPI, then click 'Check Payment' below:</i>`,
+            caption: `⚠️ <b>Insufficient Wallet Balance!</b>\n\nRequired: ₹${price} | Your Balance: ₹${user.balance.toFixed(2)}\n📦 Product: ${panel.toUpperCase()} (${duration})\n🆔 Order ID: <code>${orderId}</code>\n📌 UPI ID: <code>${UPI_ID}</code>\n\n<i>Please scan and pay ₹${price} via FamPay UPI, then click 'Check Payment' below:</i>`,
             parse_mode: "HTML",
             reply_markup: {
               inline_keyboard: [
@@ -221,12 +231,12 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
         }
         await deletePrevMessage();
         const orderId = Math.floor(100000 + Math.random() * 900000);
-        const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=upi://pay?pa=9114959377@fampay&pn=TATSER%20SHOP&am=${amt}&cu=INR&tn=Deposit_${orderId}`;
+        const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=upi://pay?pa=${UPI_ID}&pn=TATSER%20SHOP&am=${amt}&cu=INR&tn=Deposit_${orderId}`;
 
         await axios.post(`${TELEGRAM_API}/sendPhoto`, {
           chat_id: chatId,
           photo: qrUrl,
-          caption: `💳 <b>ADD BALANCE QR</b>\n\n💰 Amount: ₹${amt}\n🆔 Order ID: <code>${orderId}</code>\n\n<i>Scan and pay via UPI, then click below:</i>`,
+          caption: `💳 <b>ADD BALANCE QR</b>\n\n💰 Amount: ₹${amt}\n🆔 Order ID: <code>${orderId}</code>\n📌 UPI ID: <code>${UPI_ID}</code>\n\n<i>Scan and pay via FamPay UPI, then click below:</i>`,
           parse_mode: "HTML",
           reply_markup: {
             inline_keyboard: [
@@ -276,7 +286,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
           parse_mode: "HTML",
           reply_markup: {
             inline_keyboard: [
-              [{ text: "💬 Chat on Telegram", url: "https://t.me/TATSER_SUPPORT" }],
+              [{ text: "💬 Chat on Telegram", url: "https://t.me/+hYQLiyHcU3kxMTJl" }],
               [{ text: "🔙 Back to Home", callback_data: "main_menu" }]
             ]
           }
@@ -300,6 +310,15 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
           reply_markup: { inline_keyboard: [[{ text: "🔙 Back", callback_data: "main_menu" }]] }
         });
       }
+      else if (data === "how_to_use") {
+        await deletePrevMessage();
+        await axios.post(`${TELEGRAM_API}/sendMessage`, {
+          chat_id: chatId,
+          text: `▶️ <b>How To Use</b>\n\n1. Add balance using FamPay UPI QR or buy panels directly.\n2. Click 'Check Payment' after paying.\n3. Admin verifies and delivers instantly!`,
+          parse_mode: "HTML",
+          reply_markup: { inline_keyboard: [[{ text: "🔙 Back", callback_data: "main_menu" }]] }
+        });
+      }
       else if (data === "daily_spin") {
         await deletePrevMessage();
         await axios.post(`${TELEGRAM_API}/sendMessage`, {
@@ -309,7 +328,16 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
           reply_markup: { inline_keyboard: [[{ text: "🔙 Back", callback_data: "main_menu" }]] }
         });
       }
-      // PAYMENT VERIFICATION & ADMIN NOTIFICATION
+      else if (data === "leaderboard") {
+        await deletePrevMessage();
+        await axios.post(`${TELEGRAM_API}/sendMessage`, {
+          chat_id: chatId,
+          text: `📊 <b>Top Leaderboard</b>\n\n1. ${user.name} - ₹${user.totalSpent || 0} spent`,
+          parse_mode: "HTML",
+          reply_markup: { inline_keyboard: [[{ text: "🔙 Back", callback_data: "main_menu" }]] }
+        });
+      }
+      // PAYMENT VERIFICATION & ADMIN APPROVAL NOTIFICATION
       else if (data.startsWith("check_prod_")) {
         const parts = data.split("_");
         const orderId = parts[2];
@@ -325,7 +353,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
 
         await axios.post(`${TELEGRAM_API}/sendMessage`, {
           chat_id: ADMIN_ID,
-          text: `🔔 <b>NEW PRODUCT PAYMENT VERIFICATION</b>\n\n👤 User: ${user.name} (ID: <code>${user.id}</code>)\n📦 Product: ${panel.toUpperCase()} (${duration})\n🆔 Order: <code>${orderId}</code>\n💵 Amount: ₹${price}`,
+          text: `🔔 <b>NEW PRODUCT PAYMENT VERIFICATION</b>\n\n👤 User: ${user.name} (ID: <code>${user.id}</code>)\n📦 Product: ${panel.toUpperCase()} (${duration})\n🆔 Order ID: <code>${orderId}</code>\n💵 Amount: ₹${price}\n\n👇 Click below to approve:`,
           parse_mode: "HTML",
           reply_markup: {
             inline_keyboard: [[
@@ -348,7 +376,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
 
         await axios.post(`${TELEGRAM_API}/sendMessage`, {
           chat_id: ADMIN_ID,
-          text: `🔔 <b>NEW WALLET DEPOSIT VERIFICATION</b>\n\n👤 User: ${user.name} (ID: <code>${user.id}</code>)\n🆔 Order: <code>${orderId}</code>\n💵 Amount: ₹${amount}`,
+          text: `🔔 <b>NEW WALLET DEPOSIT VERIFICATION</b>\n\n👤 User: ${user.name} (ID: <code>${user.id}</code>)\n🆔 Order ID: <code>${orderId}</code>\n💵 Amount: ₹${amount}\n\n👇 Click below to approve:`,
           parse_mode: "HTML",
           reply_markup: {
             inline_keyboard: [[
@@ -374,7 +402,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
         await axios.post(`${TELEGRAM_API}/editMessageCaption`, {
           chat_id: chatId,
           message_id: messageId,
-          caption: `✅ <b>Approved & Key Dispatched!</b>\nUser: ${targetUserId}\nProduct: ${panel} (${duration})`,
+          caption: `✅ <b>Approved & Key Dispatched!</b>\nUser ID: ${targetUserId}\nProduct: ${panel} (${duration})`,
           parse_mode: "HTML"
         }).catch(() => {});
 
@@ -400,13 +428,13 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
         await axios.post(`${TELEGRAM_API}/editMessageCaption`, {
           chat_id: chatId,
           message_id: messageId,
-          caption: `✅ <b>Deposit Approved & Added!</b>\nUser: ${targetUserId}\nAmount: ₹${amount}`,
+          caption: `✅ <b>Deposit Approved & Added!</b>\nUser ID: ${targetUserId}\nAmount: ₹${amount}`,
           parse_mode: "HTML"
         }).catch(() => {});
 
         await axios.post(`${TELEGRAM_API}/sendMessage`, {
           chat_id: targetUserId,
-          text: `✅ <b>Balance Added Successfully!</b>\n\n💵 Amount: <b>₹${amount}</b> added to your wallet.`,
+          text: `✅ <b>Balance Added Successfully!</b>\n\n💵 Amount: <b>₹${amount}</b> added to your wallet.\n💰 New Balance: ₹${db.users[targetUserId].balance.toFixed(2)}`,
           parse_mode: "HTML",
           reply_markup: { inline_keyboard: [[{ text: "🔙 Menu", callback_data: "main_menu" }]] }
         }).catch(() => {});
@@ -419,7 +447,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
         await axios.post(`${TELEGRAM_API}/editMessageCaption`, {
           chat_id: chatId,
           message_id: messageId,
-          caption: `❌ <b>Payment Rejected</b> (Order: ${orderId})`,
+          caption: `❌ <b>Payment Rejected</b> (Order ID: ${orderId})`,
           parse_mode: "HTML"
         }).catch(() => {});
 
@@ -441,48 +469,7 @@ async function sendKeypadMenu(chatId, user) {
   const text = 
 `🏦 <b>Custom Amount</b>
 
-Method: 🟢 UPI (ZapUPI)
-Min: ₹1 | Max: ₹5,000
-
-Apna amount enter karo aur payment complete karke balance add karwao.
-
-👇 Amount: <b>₹${user.customInput}</b>
-👇 Amount type karo – buttons se:`;
-
-  const markup = {
-    inline_keyboard: [
-      [
-        { text: "💰 1", callback_data: "num_1" },
-        { text: "💰 2", callback_data: "num_2" },
-        { text: "💰 3", callback_data: "num_3" }
-      ],
-      [
-        { text: "💰 4", callback_data: "num_4" },
-        { text: "💰 5", callback_data: "num_5" },
-        { text: "💰 6", callback_data: "num_6" }
-      ],
-      [
-        { text: "💰 7", callback_data: "num_7" },
-        { text: "💰 8", callback_data: "num_8" },
-        { text: "💰 9", callback_data: "num_9" }
-      ],
-      [
-        { text: "❌ Delete", callback_data: "num_del" },
-        { text: "💰 0", callback_data: "num_0" },
-        { text: "✅ Confirm", callback_data: "num_confirm" }
-      ],
-      [{ text: "🔙 Back", callback_data: "main_menu" }]
-    ]
-  };
-
-  await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text, parse_mode: "HTML", reply_markup: markup });
-}
-
-async function updateKeypadMenu(chatId, messageId, user) {
-  const text = 
-`🏦 <b>Custom Amount</b>
-
-Method: 🟢 UPI (ZapUPI)
+Method: 🟢 FamPay UPI (${UPI_ID})
 Min: ₹1 | Max: ₹5,000
 
 Apna amount enter karo aur payment complete karke balance add karwao.
