@@ -41,12 +41,12 @@ function getPanelKeySafe(panelKey, duration) {
   return `TATSER-${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
 }
 
-// Clean Main Menu (Unwanted buttons removed)
+// TATSER Branded Main Menu
 function getMainMenuMarkup(user) {
   const usdBal = (user.balance / config.CURRENCY_RATE).toFixed(2);
   
   const welcomeText = 
-`🌺 - <b>VETLAM PANEL SHOP</b> - 🌺
+`⚡ - <b>TATSER PANEL SHOP</b> - ⚡
 
 🌸 Hello, <code>${user.name}</code> !
 
@@ -155,13 +155,13 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
         } else {
           addBalanceModule.handleKeypadInput(user.id, data);
           const balanceMenu = addBalanceModule.getAddBalanceMenu(user.id);
-          await axios.post(`${TELEGRAM_API}/editMessageText`, {
+          // Naya message bhejna taaki keypad smoothly update ho
+          await axios.post(`${TELEGRAM_API}/sendMessage`, {
             chat_id: chatId,
-            message_id: cq.message.message_id,
             text: balanceMenu.resText,
             parse_mode: "HTML",
             reply_markup: balanceMenu.reply_markup
-          }).catch(() => {});
+          });
         }
       }
       else if (data === "referral") {
