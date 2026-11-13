@@ -1,8 +1,32 @@
 const express = require('express');
 const axios = require('axios');
+const fs = require('fs');
 const config = require('./config');
-let keysData = {};
-try { keysData = require('./keysdata'); } catch (e) {}
+
+// Safe loading of keysdata with built-in stock array if file missing
+let keysData = {
+  drake: {
+    "1h": ["DRAKE-1H-ABC1", "DRAKE-1H-XYZ2"],
+    "3h": ["DRAKE-3H-DEF3"],
+    "6h": []
+  },
+  myth: {
+    "1h": ["MYTH-1H-1111"],
+    "3h": [],
+    "6h": []
+  },
+  getNextKey(panel, duration) {
+    if (this[panel] && this[panel][duration] && this[panel][duration].length > 0) {
+      return this[panel][duration].shift(); // Removes and returns the first key
+    }
+    return null; // Out of stock
+  }
+};
+
+try {
+  const externalKeys = require('./keysdata');
+  if (externalKeys) keysData = externalKeys;
+} catch (e) {}
 
 const app = express();
 app.use(express.json());
@@ -14,7 +38,7 @@ const UPI_ID = "9694421148@fam";
 
 const db = {
   users: {},
-  processedOrders: {} // Order ID tracking to prevent duplicate approvals
+  processedOrders: {}
 };
 
 function getUser(userId, firstName) {
@@ -32,13 +56,6 @@ function getUser(userId, firstName) {
     };
   }
   return db.users[userId];
-}
-
-function getPanelKeySafe(panelKey, duration) {
-  if (keysData && typeof keysData.getNextKey === 'function') {
-    return keysData.getNextKey(panelKey, duration);
-  }
-  return `TATSER-${panelKey.toUpperCase()}-${duration}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
 }
 
 function getMainMenuMarkup(user) {
@@ -165,13 +182,46 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
         const duration = parts[2];
         const price = parseInt(parts[3]);
 
+        // Check if key is available in stock before allowing purchase
+        let stockList = null;
+        if (keysData && typeof keysData[panel] === 'object' && keysData[panel][duration]) {
+          stockList = keysData[panel][duration];
+        }
+
+        if (!stockList || stockList.length === 0) {
+          await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, {
+            callback_query_id: cq.id,
+            text: "❌ Out of Stock! Filhal yeh key available nahi hai.",
+            show_alert: true
+          });
+          return;
+        }
+
         if (user.balance >= price) {
           user.balance -= price;
           user.totalPurchases = (user.totalPurchases || 0) + 1;
           user.totalSpent = (user.totalSpent || 0) + price;
 
           await deletePrevMessage();
-          const licenseKey = getPanelKeySafe(panel, duration);
+          
+          // Get and automatically remove the key from stock
+          let licenseKey = null;
+          if (typeof keysData.getNextKey === 'function') {
+            licenseKey = keysData.getNextKey(panel, duration);
+          } else if (stockList.length > 0) {
+            licenseKey = stockList.shift();
+          }
+
+          if (!licenseKey) {
+            user.balance += price; // Refund if stock ran out concurrently
+            await axios.post(`${TELEGRAM_API}/sendMessage`, {
+              chat_id: chatId,
+              text: `❌ <b>Out of Stock!</b>\n\nKeys khatam ho chuki hain. Aapka ₹${price} refund kar diya gaya hai.`,
+              parse_mode: "HTML",
+              reply_markup: { inline_keyboard: [[{ text: "🔙 Menu", callback_data: "main_menu" }]] }
+            });
+            return;
+          }
 
           await axios.post(`${TELEGRAM_API}/sendMessage`, {
             chat_id: chatId,
@@ -386,7 +436,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
           }
         }).catch(err => console.log("Admin send error:", err.message));
       }
-      // APPROVE PRODUCT (Single-use guard)
+      // APPROVE PRODUCT WITH STOCK CHECK
       else if (data.startsWith("approve_prod_")) {
         const parts = data.split("_");
         const targetUserId = parts[2];
@@ -403,6 +453,18 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
           });
           return;
         }
+
+        // Check stock before admin approval dispatch
+        let stockList = keysData && keysData[panel] ? keysData[panel][duration] : null;
+        if (!stockList || stockList.length === 0) {
+          await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, {
+            callback_query_id: cq.id,
+            text: "❌ Out of Stock! Key available nahi hai.",
+            show_alert: true
+          });
+          return;
+        }
+
         db.processedOrders[orderId] = true;
 
         if (db.users[targetUserId]) {
@@ -410,14 +472,20 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
           db.users[targetUserId].totalSpent = (db.users[targetUserId].totalSpent || 0) + price;
         }
 
+        // Extract and delete key from stock permanently
+        let licenseKey = null;
+        if (typeof keysData.getNextKey === 'function') {
+          licenseKey = keysData.getNextKey(panel, duration);
+        } else {
+          licenseKey = stockList.shift();
+        }
+
         await axios.post(`${TELEGRAM_API}/editMessageText`, {
           chat_id: chatId,
           message_id: messageId,
-          text: `✅ <b>Approved & Key Dispatched! (Order: ${orderId})</b>\nUser ID: ${targetUserId}\nProduct: ${panel} (${duration})`,
+          text: `✅ <b>Approved & Key Dispatched! (Order: ${orderId})</b>\nUser ID: ${targetUserId}\nProduct: ${panel} (${duration})\nKey: <code>${licenseKey}</code>`,
           parse_mode: "HTML"
         }).catch(() => {});
-
-        const licenseKey = getPanelKeySafe(panel, duration);
 
         await axios.post(`${TELEGRAM_API}/sendMessage`, {
           chat_id: targetUserId,
@@ -426,7 +494,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
           reply_markup: { inline_keyboard: [[{ text: "🔙 Menu", callback_data: "main_menu" }]] }
         }).catch(() => {});
       }
-      // APPROVE DEPOSIT (Single-use guard)
+      // APPROVE DEPOSIT
       else if (data.startsWith("approve_dep_")) {
         const parts = data.split("_");
         const targetUserId = parts[2];
