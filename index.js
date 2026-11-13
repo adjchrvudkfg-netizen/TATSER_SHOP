@@ -9,7 +9,7 @@ app.use(express.json());
 
 const TOKEN = config.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_API = `https://api.telegram.org/bot${TOKEN}`;
-const ADMIN_ID = "880513593"; 
+const ADMIN_ID = "880513593"; // Aapki Admin Chat ID / Group ID
 
 const db = {
   users: {}
@@ -148,7 +148,6 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
         };
         await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text, parse_mode: "HTML", reply_markup: markup });
       }
-      // WALLET BALANCE CHECK & INSTANT PURCHASE OR QR
       else if (data.startsWith("buy_")) {
         const parts = data.split("_");
         const panel = parts[1];
@@ -172,9 +171,10 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
             }
           });
         } else {
-          // Insufficient balance -> Delete old message and show QR
           await deletePrevMessage();
           const orderId = Math.floor(100000 + Math.random() * 900000);
+          
+          // Fallback dynamic QR generator
           const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=upi://pay?pa=9114959377@fampay&pn=TATSER%20SHOP&am=${price}&cu=INR&tn=Order_${orderId}`;
 
           await axios.post(`${TELEGRAM_API}/sendPhoto`, {
@@ -248,11 +248,38 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
       }
       else if (data === "support") {
         await deletePrevMessage();
+        const supportText = 
+`🤖 <b>SUPPORT CENTER</b> 🤖
+
+👋 <b>Need Any Help?</b>
+
+➖ 🛒 <b>Purchase Support</b>
+➖ 💳 <b>Payment Issues</b>
+➖ 🔑 <b>Key Problems</b>
+➖ ⚡ <b>Instant Assistance</b>
+
+──────────────────────
+👤 <b>Admin:</b> @TATSER_SUPPORT
+🕒 <b>24x7 Active Support</b>
+──────────────────────
+
+⚠️ <b>Contact Admin If:</b>
+👉 Balance nahi aaya
+👉 Key nahi mila
+👉 Purchase problem
+
+🔥 <b>Fast Reply • Trusted Support</b> ✅`;
+
         await axios.post(`${TELEGRAM_API}/sendMessage`, {
           chat_id: chatId,
-          text: `📞 <b>CUSTOMER SUPPORT</b>\n\nContact Admin for any issues: @TATSER_SUPPORT`,
+          text: supportText,
           parse_mode: "HTML",
-          reply_markup: { inline_keyboard: [[{ text: "🔙 Back", callback_data: "main_menu" }]] }
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: "💬 Chat on Telegram", url: "https://t.me/TATSER_SUPPORT" }],
+              [{ text: "🔙 Back to Home", callback_data: "main_menu" }]
+            ]
+          }
         });
       }
       else if (data === "profile") {
@@ -282,7 +309,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
           reply_markup: { inline_keyboard: [[{ text: "🔙 Back", callback_data: "main_menu" }]] }
         });
       }
-      // PAYMENT VERIFICATION & CHANNEL NOTIFICATION
+      // PAYMENT VERIFICATION & ADMIN NOTIFICATION
       else if (data.startsWith("check_prod_")) {
         const parts = data.split("_");
         const orderId = parts[2];
@@ -306,7 +333,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
               { text: "❌ Reject", callback_data: `reject_${user.id}_${orderId}` }
             ]]
           }
-        });
+        }).catch(err => console.log("Admin send error:", err.message));
       }
       else if (data.startsWith("check_dep_")) {
         const parts = data.split("_");
@@ -329,7 +356,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
               { text: "❌ Reject", callback_data: `reject_${user.id}_${orderId}` }
             ]]
           }
-        });
+        }).catch(err => console.log("Admin send error:", err.message));
       }
       else if (data.startsWith("approve_prod_")) {
         const parts = data.split("_");
