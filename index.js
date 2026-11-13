@@ -9,11 +9,12 @@ app.use(express.json());
 
 const TOKEN = config.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_API = `https://api.telegram.org/bot${TOKEN}`;
-const ADMIN_ID = "8805135936"; // Aapki Admin Chat ID / Channel ID
-const UPI_ID = "9694421148@fam"; // Aapka FamPay UPI ID
+const ADMIN_ID = "8805135936"; 
+const UPI_ID = "9694421148@fam";
 
 const db = {
-  users: {}
+  users: {},
+  processedOrders: {} // Order ID tracking to prevent duplicate approvals
 };
 
 function getUser(userId, firstName) {
@@ -40,7 +41,6 @@ function getPanelKeySafe(panelKey, duration) {
   return `TATSER-${panelKey.toUpperCase()}-${duration}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
 }
 
-// Menu with Blue Shop button and Green style buttons
 function getMainMenuMarkup(user) {
   const usdBal = (user.balance / config.CURRENCY_RATE).toFixed(2);
   
@@ -66,7 +66,7 @@ function getMainMenuMarkup(user) {
 
   const reply_markup = {
     inline_keyboard: [
-      [{ text: "🛍️ Shop", callback_data: "shop" }], // Blue / Primary row
+      [{ text: "🛍️ Shop", callback_data: "shop" }],
       [{ text: "💳 Add Balance", callback_data: "add_balance" }, { text: "📦 My Orders", callback_data: "my_orders" }],
       [{ text: "👤 My Profile", callback_data: "profile" }, { text: "🔗 Referral", callback_data: "referral" }],
       [{ text: "🎡 Daily Spin", callback_data: "daily_spin" }, { text: "📞 Support", callback_data: "support" }]
@@ -309,10 +309,9 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
           reply_markup: { inline_keyboard: [[{ text: "🔙 Back", callback_data: "main_menu" }]] }
         });
       }
-      // DAILY SPIN LOGIC (Max ₹1.00, 24 Hours Cooldown, Direct Wallet Add)
       else if (data === "daily_spin") {
         const now = Date.now();
-        const cooldown = 24 * 60 * 60 * 1000; // 24 hours in ms
+        const cooldown = 24 * 60 * 60 * 1000;
 
         if (user.lastSpinTime && (now - user.lastSpinTime < cooldown)) {
           const remainingTime = Math.ceil((cooldown - (now - user.lastSpinTime)) / (1000 * 60 * 60));
@@ -325,7 +324,6 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
         }
 
         user.lastSpinTime = now;
-        // Random amount between ₹0.10 and ₹1.00
         const wonAmount = parseFloat((Math.random() * (1.00 - 0.10) + 0.10).toFixed(2));
         user.balance += wonAmount;
 
@@ -339,7 +337,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
           }
         });
       }
-      // PAYMENT VERIFICATION & ADMIN APPROVAL NOTIFICATION
+      // PAYMENT CHECK & ADMIN VERIFICATION
       else if (data.startsWith("check_prod_")) {
         const parts = data.split("_");
         const orderId = parts[2];
@@ -355,7 +353,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
 
         await axios.post(`${TELEGRAM_API}/sendMessage`, {
           chat_id: ADMIN_ID,
-          text: `🔔 <b>NEW PRODUCT PAYMENT VERIFICATION</b>\n\n👤 User: ${user.name} (ID: <code>${user.id}</code>)\n📦 Product: ${panel.toUpperCase()} (${duration})\n🆔 Order ID: <code>${orderId}</code>\n💵 Amount: ₹${price}\n\n👇 Click below to approve:`,
+          text: `🔔 <b>NEW PRODUCT PAYMENT VERIFICATION</b>\n\n👤 User Name: ${user.name}\n🆔 User ID: <code>${user.id}</code>\n📦 Product: ${panel.toUpperCase()} (${duration})\n🆔 Order ID: <code>${orderId}</code>\n💵 Amount: ₹${price}\n\n👇 Click below to approve:`,
           parse_mode: "HTML",
           reply_markup: {
             inline_keyboard: [[
@@ -378,7 +376,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
 
         await axios.post(`${TELEGRAM_API}/sendMessage`, {
           chat_id: ADMIN_ID,
-          text: `🔔 <b>NEW WALLET DEPOSIT VERIFICATION</b>\n\n👤 User: ${user.name} (ID: <code>${user.id}</code>)\n🆔 Order ID: <code>${orderId}</code>\n💵 Amount: ₹${amount}\n\n👇 Click below to approve:`,
+          text: `🔔 <b>NEW WALLET DEPOSIT VERIFICATION</b>\n\n👤 User Name: ${user.name}\n🆔 User ID: <code>${user.id}</code>\n🆔 Order ID: <code>${orderId}</code>\n💵 Amount: ₹${amount}\n\n👇 Click below to approve:`,
           parse_mode: "HTML",
           reply_markup: {
             inline_keyboard: [[
@@ -388,6 +386,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
           }
         }).catch(err => console.log("Admin send error:", err.message));
       }
+      // APPROVE PRODUCT (Single-use guard)
       else if (data.startsWith("approve_prod_")) {
         const parts = data.split("_");
         const targetUserId = parts[2];
@@ -396,15 +395,25 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
         const price = parseFloat(parts[5]);
         const orderId = parts[6];
 
+        if (db.processedOrders[orderId]) {
+          await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, {
+            callback_query_id: cq.id,
+            text: "⚠️ Yeh order pehle hi process ho chuka hai!",
+            show_alert: true
+          });
+          return;
+        }
+        db.processedOrders[orderId] = true;
+
         if (db.users[targetUserId]) {
           db.users[targetUserId].totalPurchases = (db.users[targetUserId].totalPurchases || 0) + 1;
           db.users[targetUserId].totalSpent = (db.users[targetUserId].totalSpent || 0) + price;
         }
 
-        await axios.post(`${TELEGRAM_API}/editMessageCaption`, {
+        await axios.post(`${TELEGRAM_API}/editMessageText`, {
           chat_id: chatId,
           message_id: messageId,
-          caption: `✅ <b>Approved & Key Dispatched!</b>\nUser ID: ${targetUserId}\nProduct: ${panel} (${duration})`,
+          text: `✅ <b>Approved & Key Dispatched! (Order: ${orderId})</b>\nUser ID: ${targetUserId}\nProduct: ${panel} (${duration})`,
           parse_mode: "HTML"
         }).catch(() => {});
 
@@ -417,20 +426,31 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
           reply_markup: { inline_keyboard: [[{ text: "🔙 Menu", callback_data: "main_menu" }]] }
         }).catch(() => {});
       }
+      // APPROVE DEPOSIT (Single-use guard)
       else if (data.startsWith("approve_dep_")) {
         const parts = data.split("_");
         const targetUserId = parts[2];
         const amount = parseFloat(parts[3]);
         const orderId = parts[4];
 
+        if (db.processedOrders[orderId]) {
+          await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, {
+            callback_query_id: cq.id,
+            text: "⚠️ Yeh deposit pehle hi approve ho chuka hai!",
+            show_alert: true
+          });
+          return;
+        }
+        db.processedOrders[orderId] = true;
+
         if (db.users[targetUserId]) {
           db.users[targetUserId].balance += amount;
         }
 
-        await axios.post(`${TELEGRAM_API}/editMessageCaption`, {
+        await axios.post(`${TELEGRAM_API}/editMessageText`, {
           chat_id: chatId,
           message_id: messageId,
-          caption: `✅ <b>Deposit Approved & Added!</b>\nUser ID: ${targetUserId}\nAmount: ₹${amount}`,
+          text: `✅ <b>Deposit Approved & Added! (Order: ${orderId})</b>\nUser ID: ${targetUserId}\nAmount: ₹${amount}`,
           parse_mode: "HTML"
         }).catch(() => {});
 
@@ -441,15 +461,26 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
           reply_markup: { inline_keyboard: [[{ text: "🔙 Menu", callback_data: "main_menu" }]] }
         }).catch(() => {});
       }
+      // REJECT
       else if (data.startsWith("reject_")) {
         const parts = data.split("_");
         const targetUserId = parts[1];
         const orderId = parts[2];
 
-        await axios.post(`${TELEGRAM_API}/editMessageCaption`, {
+        if (db.processedOrders[orderId]) {
+          await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, {
+            callback_query_id: cq.id,
+            text: "⚠️ Yeh order pehle hi handle ho chuka hai!",
+            show_alert: true
+          });
+          return;
+        }
+        db.processedOrders[orderId] = true;
+
+        await axios.post(`${TELEGRAM_API}/editMessageText`, {
           chat_id: chatId,
           message_id: messageId,
-          caption: `❌ <b>Payment Rejected</b> (Order ID: ${orderId})`,
+          text: `❌ <b>Payment Rejected</b> (Order ID: ${orderId})`,
           parse_mode: "HTML"
         }).catch(() => {});
 
@@ -567,6 +598,4 @@ app.listen(PORT, async () => {
       console.log(`Webhook set successfully!`);
     } catch (e) {}
   }
-})
-
- 
+});
