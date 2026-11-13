@@ -151,3 +151,114 @@ Please try again if you still want to add balance.`,
 }
 
 module.exports = { getAddBalanceMenu, handleKeypadInput, generatePaymentQR };
+const axios = require('axios');
+
+// Yahan apna Admin Telegram Chat ID daalein jiske paas approval message jayega
+const ADMIN_CHAT_ID = "YOUR_ADMIN_TELEGRAM_ID"; 
+
+// 1. Jab user "Check Payment" par click kare
+async function handleCheckPayment(callbackQuery, TELEGRAM_API) {
+  const chatId = callbackQuery.message.chat.id;
+  const data = callbackQuery.data; // format: check_order_ORDERID_PRICE ya check_deposit_...
+  const parts = data.split("_");
+  
+  // Order ID aur Amount extract karna
+  const orderId = parts[2];
+  const amount = parts[3];
+  const userId = callbackQuery.from.id;
+  const userName = callbackQuery.from.first_name || "User";
+
+  // User ko turant message dikhayein ki request admin ko bhej di gayi hai
+  await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, {
+    callback_query_id: callbackQuery.id,
+    text: "⏳ Payment check ki ja rahi hai! Admin verification ke baad balance/key mil jayegi.",
+    show_alert: true
+  });
+
+  // 2. Admin ke paas approval notification bhejna
+  const adminText = 
+`🔔 <b>NEW PAYMENT VERIFICATION REQUEST</b> 🔔
+
+👤 <b>User:</b> ${userName} (ID: <code>${userId}</code>)
+🆔 <b>Order ID:</b> <code>${orderId}</code>
+💵 <b>Amount:</b> ₹${amount}
+
+Kripya apna FamPay check karein ki payment aayi hai ya nahi, phir neeche diye button se approve karein:`;
+
+  await axios.post(`${TELEGRAM_API}/sendMessage`, {
+    chat_id: ADMIN_CHAT_ID,
+    text: adminText,
+    parse_mode: "HTML",
+    reply_markup: {
+      inline_keyboard: [
+        [
+          { text: "✅ Approve & Add", callback_data: `approve_${userId}_${amount}_${orderId}`, style: "success" },
+          { text: "❌ Reject", callback_data: `reject_${userId}_${orderId}`, style: "danger" }
+        ]
+      ]
+    }
+  });
+}
+
+// 3. Jab Admin "Approve" par click kare
+async function handleAdminApproval(callbackQuery, TELEGRAM_API, usersDb) {
+  const data = callbackQuery.data; // format: approve_userId_amount_orderId
+  const parts = data.split("_");
+  const targetUserId = parts[1];
+  const amount = parseFloat(parts[2]);
+  const orderId = parts[3];
+
+  // User ka balance update karein (agar user database mein hai)
+  if (usersDb && usersDb[targetUserId]) {
+    usersDb[targetUserId].balance = (usersDb[targetUserId].balance || 0) + amount;
+    usersDb[targetUserId].totalSpent = (usersDb[targetUserId].totalSpent || 0) + amount;
+    usersDb[targetUserId].totalOrders = (usersDb[targetUserId].totalOrders || 0) + 1;
+  }
+
+  // Admin ke message ko update kar dein taaki pata chale approve ho gaya hai
+  await axios.post(`${TELEGRAM_API}/editMessageText`, {
+    chat_id: callbackQuery.message.chat.id,
+    message_id: callbackQuery.message.message_id,
+    text: `✅ <b>Payment Approved Successfully!</b>\n\nUser ID: ${targetUserId}\nAmount: ₹${amount}\nOrder ID: ${orderId}`,
+    parse_mode: "HTML"
+  });
+
+  // User ko notification bhej dein ki payment successful ho gayi hai
+  try {
+    await axios.post(`${TELEGRAM_API}/sendMessage`, {
+      chat_id: targetUserId,
+      text: `🎉 <b>Payment Verified & Successful!</b>\n\n₹${amount} has been added to your account / Order (ID: ${orderId}) has been processed.`,
+      parse_mode: "HTML"
+    });
+  } catch (err) {
+    console.log("Could not message user directly.");
+  }
+}
+
+// 4. Jab Admin "Reject" par click kare
+async function handleAdminRejection(callbackQuery, TELEGRAM_API) {
+  const data = callbackQuery.data; // format: reject_userId_orderId
+  const parts = data.split("_");
+  const targetUserId = parts[1];
+  const orderId = parts[2];
+
+  await axios.post(`${TELEGRAM_API}/editMessageText`, {
+    chat_id: callbackQuery.message.chat.id,
+    message_id: callbackQuery.message.message_id,
+    text: `❌ <b>Payment Rejected!</b>\n\nUser ID: ${targetUserId}\nOrder ID: ${orderId}`,
+    parse_mode: "HTML"
+  });
+
+  try {
+    await axios.post(`${TELEGRAM_API}/sendMessage`, {
+      chat_id: targetUserId,
+      text: `❌ <b>Payment Verification Failed!</b>\n\nAapka payment Order ID: <code>${orderId}</code> verify nahi ho paya ya amount match nahi hua. Kripya support se contact karein.`,
+      parse_mode: "HTML"
+    });
+  } catch (err) {
+    console.log("Could not message user directly.");
+  }
+}
+
+module.exports = { handleCheckPayment, handleAdminApproval, handleAdminRejection };
+
