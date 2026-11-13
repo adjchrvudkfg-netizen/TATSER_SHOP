@@ -1,7 +1,5 @@
 const express = require('express');
 const axios = require('axios');
-const fs = require('fs');
-const path = require('path');
 const config = require('./config');
 
 const app = express();
@@ -9,28 +7,27 @@ app.use(express.json());
 
 const TOKEN = config.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_API = `https://api.telegram.org/bot${TOKEN}`;
-const ADMIN_ID = "8805135936"; 
+const ADMIN_ID = 8805135936; // Aapki Admin ID (Number format)
 const UPI_ID = "9694421148@fam";
+
+// Permanent In-Memory Stock & Database
+const stock = {
+  drake: {
+    "1h": ["DRAKE-W1S5-ISNS-Q8C7", "DRAKE-QNAR-OWPM-8UX0"],
+    "3h": ["DRAKE-LO4G-E905-PFHT"],
+    "6h": ["DRAKE-YG3M-M37S-LEY2"]
+  },
+  myth: {
+    "1h": ["MYTH-1H-KEY111", "MYTH-1H-KEY222"],
+    "3h": ["MYTH-3H-KEY111"],
+    "6h": ["MYTH-6H-KEY111"]
+  }
+};
 
 const db = {
   users: {},
   processedOrders: {}
 };
-
-// Helper to get fresh keysdata without caching issues
-function getKeysData() {
-  const filePath = path.resolve('./keysdata.js');
-  try {
-    delete require.cache[require.resolve(filePath)];
-    return require('./keysdata');
-  } catch (e) {
-    return {
-      drake: { "1h": [], "3h": [], "6h": [] },
-      myth: { "1h": [], "3h": [], "6h": [] },
-      getNextKey() { return null; }
-    };
-  }
-}
 
 function getUser(userId, firstName) {
   if (!db.users[userId]) {
@@ -95,6 +92,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
       const from = update.message.from;
       const user = getUser(from.id, from.first_name);
 
+      // 1. START COMMAND
       if (text.startsWith('/start')) {
         const menu = getMainMenuMarkup(user);
         await axios.post(`${TELEGRAM_API}/sendMessage`, {
@@ -102,6 +100,87 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
           text: menu.resText,
           parse_mode: "HTML",
           reply_markup: menu.reply_markup
+        });
+      }
+      // 2. ADMIN COMMAND: /addkey panel duration key
+      // Example: /addkey drake 1h DRAKE-NEW-KEY-999
+      else if (text.startsWith('/addkey')) {
+        if (from.id !== ADMIN_ID) {
+          await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text: "❌ Aap admin nahi hain!" });
+          return;
+        }
+
+        const parts = text.split(" ");
+        if (parts.length < 4) {
+          await axios.post(`${TELEGRAM_API}/sendMessage`, {
+            chat_id: chatId,
+            text: "⚠️ <b>Invalid Format!</b>\nUse: <code>/addkey panel duration key</code>\nExample: <code>/addkey drake 1h DRAKE-ABC-123</code>",
+            parse_mode: "HTML"
+          });
+          return;
+        }
+
+        const panel = parts[1].toLowerCase();
+        const duration = parts[2].toLowerCase();
+        const newKey = parts.slice(3).join(" "); // Agar key mein spaces ho toh combine kar lega
+
+        if (!stock[panel]) stock[panel] = {};
+        if (!stock[panel][duration]) stock[panel][duration] = [];
+
+        stock[panel][duration].push(newKey);
+
+        await axios.post(`${TELEGRAM_API}/sendMessage`, {
+          chat_id: chatId,
+          text: `✅ <b>Key Successfully Added!</b>\n\n📦 Panel: <b>${panel.toUpperCase()}</b>\n⏳ Duration: <b>${duration.toUpperCase()}</b>\n🔑 Key: <code>${newKey}</code>\n📊 Total Stock in this category: <b>${stock[panel][duration].length}</b>`,
+          parse_mode: "HTML"
+        });
+      }
+      // 3. ADMIN COMMAND: /addupdate message
+      else if (text.startsWith('/addupdate')) {
+        if (from.id !== ADMIN_ID) {
+          await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text: "❌ Aap admin nahi hain!" });
+          return;
+        }
+
+        const updateMsg = text.replace('/addupdate', '').trim();
+        if (!updateMsg) {
+          await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text: "⚠️ Please enter update message after /addupdate" });
+          return;
+        }
+
+        let sentCount = 0;
+        for (const uid in db.users) {
+          try {
+            await axios.post(`${TELEGRAM_API}/sendMessage`, {
+              chat_id: uid,
+              text: `📢 <b>TATSER SHOP UPDATE</b> 📢\n\n${updateMsg}`,
+              parse_mode: "HTML"
+            });
+            sentCount++;
+          } catch (e) {}
+        }
+
+        await axios.post(`${TELEGRAM_API}/sendMessage`, {
+          chat_id: chatId,
+          text: `✅ Update broadcasted successfully to ${sentCount} users!`
+        });
+      }
+      // 4. ADMIN COMMAND: /stock
+      else if (text === '/stock') {
+        if (from.id !== ADMIN_ID) return;
+
+        let stockText = `📊 <b>CURRENT STOCK STATUS</b>\n\n`;
+        for (const p in stock) {
+          stockText += `🔥 <b>${p.toUpperCase()}</b>:\n`;
+          for (const d in stock[p]) {
+            stockText += `  - ${d}: <b>${stock[p][d].length} keys left</b>\n`;
+          }
+        }
+
+        await axios.post(`${TELEGRAM_API}/sendMessage`, {
+          chat_id: chatId,
+          text: stockText,
+          parse_mode: "HTML"
         });
       }
     } 
@@ -112,7 +191,6 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
       const data = cq.data;
       const from = cq.from;
       const user = getUser(from.id, from.first_name);
-      const keysData = getKeysData(); // Fetch fresh keys data
 
       const deletePrevMessage = async () => {
         try {
@@ -146,9 +224,9 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
         await deletePrevMessage();
         const text = `⚡ <b>MYTH MOD PACKAGES</b>\n\nSelect duration & price:`;
         
-        const s1 = keysData.myth && keysData.myth["1h"] ? keysData.myth["1h"].length : 0;
-        const s3 = keysData.myth && keysData.myth["3h"] ? keysData.myth["3h"].length : 0;
-        const s6 = keysData.myth && keysData.myth["6h"] ? keysData.myth["6h"].length : 0;
+        const s1 = stock.myth && stock.myth["1h"] ? stock.myth["1h"].length : 0;
+        const s3 = stock.myth && stock.myth["3h"] ? stock.myth["3h"].length : 0;
+        const s6 = stock.myth && stock.myth["6h"] ? stock.myth["6h"].length : 0;
 
         const markup = {
           inline_keyboard: [
@@ -164,9 +242,9 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
         await deletePrevMessage();
         const text = `🔥 <b>DRAKE PANEL PACKAGES</b>\n\nSelect duration & price:`;
         
-        const s1 = keysData.drake && keysData.drake["1h"] ? keysData.drake["1h"].length : 0;
-        const s3 = keysData.drake && keysData.drake["3h"] ? keysData.drake["3h"].length : 0;
-        const s6 = keysData.drake && keysData.drake["6h"] ? keysData.drake["6h"].length : 0;
+        const s1 = stock.drake && stock.drake["1h"] ? stock.drake["1h"].length : 0;
+        const s3 = stock.drake && stock.drake["3h"] ? stock.drake["3h"].length : 0;
+        const s6 = stock.drake && stock.drake["6h"] ? stock.drake["6h"].length : 0;
 
         const markup = {
           inline_keyboard: [
@@ -191,8 +269,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
         const duration = parts[2];
         const price = parseInt(parts[3]);
 
-        let stockList = keysData && keysData[panel] ? keysData[panel][duration] : null;
-        if (!stockList || stockList.length === 0) {
+        if (!stock[panel] || !stock[panel][duration] || stock[panel][duration].length === 0) {
           await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, {
             callback_query_id: cq.id,
             text: "❌ Out of Stock! Filhal yeh key available nahi hai.",
@@ -207,7 +284,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
           user.totalSpent = (user.totalSpent || 0) + price;
 
           await deletePrevMessage();
-          const licenseKey = keysData.getNextKey(panel, duration);
+          const licenseKey = stock[panel][duration].shift();
 
           if (!licenseKey) {
             user.balance += price;
@@ -422,7 +499,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
 
         await axios.post(`${TELEGRAM_API}/sendMessage`, {
           chat_id: ADMIN_ID,
-          text: `🔔 <b>NEW WALLET DEPOSIT VERIFICATION</b>\n\n👤 User Name: ${user.name}\n🆔 User ID: <code>${user.id}</code>\n🆔 Order ID: <code>${orderId}</code>\n💵 Amount: ₹${amount}\n\n👇 Click below to approve:`,
+          text: `🔔  <b>NEW WALLET DEPOSIT VERIFICATION</b>\n\n👤 User Name: ${user.name}\n🆔 User ID: <code>${user.id}</code>\n🆔 Order ID: <code>${orderId}</code>\n💵 Amount: ₹${amount}\n\n👇 Click below to approve:`,
           parse_mode: "HTML",
           reply_markup: {
             inline_keyboard: [[
@@ -449,8 +526,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
           return;
         }
 
-        let stockList = keysData && keysData[panel] ? keysData[panel][duration] : null;
-        if (!stockList || stockList.length === 0) {
+        if (!stock[panel] || !stock[panel][duration] || stock[panel][duration].length === 0) {
           await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, {
             callback_query_id: cq.id,
             text: "❌ Out of Stock! Key available nahi hai.",
@@ -466,7 +542,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
           db.users[targetUserId].totalSpent = (db.users[targetUserId].totalSpent || 0) + price;
         }
 
-        const licenseKey = keysData.getNextKey(panel, duration);
+        const licenseKey = stock[panel][duration].shift();
 
         await axios.post(`${TELEGRAM_API}/editMessageText`, {
           chat_id: chatId,
@@ -653,4 +729,3 @@ app.listen(PORT, async () => {
     } catch (e) {}
   }
 });
-    
