@@ -9,7 +9,7 @@ app.use(express.json());
 
 const TOKEN = config.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_API = `https://api.telegram.org/bot${TOKEN}`;
-const ADMIN_ID = "880513593"; // Aapki Admin Chat ID / Channel ID
+const ADMIN_ID = "8805135936"; // Aapki Admin Chat ID / Channel ID
 const UPI_ID = "9694421148@fam"; // Aapka FamPay UPI ID
 
 const db = {
