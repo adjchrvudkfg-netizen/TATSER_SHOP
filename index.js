@@ -203,7 +203,6 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
 
         await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text: `🗑️ Product <code>${productKey}</code> removed successfully!`, parse_mode: "HTML" });
       }
-      // BULK KEY ADD COMMAND: /addbulk drake 1h (followed by keys in new lines)
       else if (text.startsWith('/addbulk')) {
         if (from.id !== ADMIN_ID) {
           await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text: "❌ Aap admin nahi hain!" });
@@ -225,15 +224,16 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
         const panel = firstLineParts[1].toLowerCase();
         const duration = firstLineParts[2].toLowerCase();
 
+        // Auto-create product if not exists
         if (!shopDb.products[panel]) {
-          await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text: `❌ Product '${panel}' exist nahi karta!` });
-          return;
+          shopDb.products[panel] = panel.toUpperCase();
+          shopDb.maintenance[panel] = false;
         }
 
         if (!shopDb.stock[panel]) shopDb.stock[panel] = {};
         if (!shopDb.stock[panel][duration]) shopDb.stock[panel][duration] = [];
+        if (!shopDb.prices[panel]) shopDb.prices[panel] = { "1h": 49, "3h": 129, "6h": 249 };
 
-        // Extract keys from line 2 onwards
         const newKeys = lines.slice(1).map(k => k.trim()).filter(k => k.length > 0);
 
         if (newKeys.length === 0) {
@@ -267,8 +267,8 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
         const newKey = parts.slice(3).join(" ");
 
         if (!shopDb.products[panel]) {
-          await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text: `❌ Product '${panel}' exist nahi karta!` });
-          return;
+          shopDb.products[panel] = panel.toUpperCase();
+          shopDb.maintenance[panel] = false;
         }
 
         if (!shopDb.stock[panel]) shopDb.stock[panel] = {};
@@ -323,7 +323,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
             await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: uid, text: `📢 <b>SHOP UPDATE</b>\n\n${updateMsg}`, parse_mode: "HTML" });
           } catch (e) {}
         }
-        await axios.post(`${TELEGRAM_API}/sendMessage`, { chatId, text: "✅ Broadcast sent!" });
+        await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text: "✅ Broadcast sent!" });
       }
       else if (text === '/stock') {
         if (from.id !== ADMIN_ID) return;
@@ -443,6 +443,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
           user.totalSpent = (user.totalSpent || 0) + price;
 
           await deletePrevMessage();
+          // ONLY shift (remove) the exact key assigned to this user, keeping the rest of the stock intact!
           const licenseKey = shopDb.stock[panel][duration].shift();
           saveData();
 
@@ -559,11 +560,21 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
         const parts = data.split("_");
         if (shopDb.processedOrders[parts[6]]) return;
         shopDb.processedOrders[parts[6]] = true;
-        const licenseKey = shopDb.stock[parts[3]][parts[4]].shift();
+        
+        const targetUserId = parts[2];
+        const panel = parts[3];
+        const duration = parts[4];
+
+        if (!shopDb.stock[panel] || !shopDb.stock[panel][duration] || shopDb.stock[panel][duration].length === 0) {
+          await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, { callback_query_id: cq.id, text: "❌ Stock khatam ho gaya!", show_alert: true });
+          return;
+        }
+
+        const licenseKey = shopDb.stock[panel][duration].shift();
         saveData();
 
         await axios.post(`${TELEGRAM_API}/editMessageText`, { chat_id: chatId, message_id: messageId, text: `✅ Approved! Key: <code>${licenseKey}</code>`, parse_mode: "HTML" }).catch(() => {});
-        await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: parts[2], text: `✅ <b>Payment Successful!</b>\nKey: <code>${licenseKey}</code>`, parse_mode: "HTML", reply_markup: { inline_keyboard: [[{ text: "🔙 Menu", callback_data: "main_menu" }]] } }).catch(() => {});
+        await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: targetUserId, text: `✅ <b>Payment Successful!</b>\nKey: <code>${licenseKey}</code>`, parse_mode: "HTML", reply_markup: { inline_keyboard: [[{ text: "🔙 Menu", callback_data: "main_menu" }]] } }).catch(() => {});
       }
       else if (data.startsWith("approve_dep_")) {
         const parts = data.split("_");
