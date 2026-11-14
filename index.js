@@ -57,18 +57,23 @@ let shopDb = {
   processedOrders: {}
 };
 
-// Load saved data safely
+// Load saved data safely with deep merging so defaults aren't lost
 try {
   if (fs.existsSync(dbFilePath)) {
     const raw = fs.readFileSync(dbFilePath, 'utf8');
-    const parsed = JSON.parse(raw);
-    if (parsed.products) shopDb.products = parsed.products;
-    if (parsed.maintenance) shopDb.maintenance = parsed.maintenance;
-    if (parsed.prices) shopDb.prices = parsed.prices;
-    if (parsed.stock) shopDb.stock = parsed.stock;
-    if (parsed.users) shopDb.users = parsed.users;
-    if (parsed.processedOrders) shopDb.processedOrders = parsed.processedOrders;
-    console.log("✅ Database loaded successfully from file!");
+    if (raw && raw.trim().length > 0) {
+      const parsed = JSON.parse(raw);
+      if (parsed.products) shopDb.products = parsed.products;
+      if (parsed.maintenance) shopDb.maintenance = { ...shopDb.maintenance, ...parsed.maintenance };
+      if (parsed.prices) shopDb.prices = { ...shopDb.prices, ...parsed.prices };
+      if (parsed.stock) shopDb.stock = { ...shopDb.stock, ...parsed.stock };
+      if (parsed.users) shopDb.users = parsed.users;
+      if (parsed.processedOrders) shopDb.processedOrders = parsed.processedOrders;
+      console.log("✅ Database loaded successfully from file!");
+    }
+  } else {
+    // Create initial file if not exists
+    saveData();
   }
 } catch (e) {
   console.log("⚠️ Error loading database, using default:", e.message);
@@ -377,6 +382,9 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
         const markup = { inline_keyboard: durationButtons };
         await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text, parse_mode: "HTML", reply_markup: markup });
       }
+      else if (data.startsWith("notify_")) {
+        await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, { callback_query_id: cq.id, text: "🔔 Notification set!", show_alert: true });
+      }
       else if (data === "nostock") {
         await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, { callback_query_id: cq.id, text: "❌ Yeh package out of stock hai!", show_alert: true });
       }
@@ -579,3 +587,4 @@ app.listen(PORT, async () => {
     } catch (e) {}
   }
 });
+        
