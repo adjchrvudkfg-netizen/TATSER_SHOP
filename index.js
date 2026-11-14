@@ -36,6 +36,15 @@ let shopDb = {
     dripclient: false,
     xreg: false
   },
+  links: {
+    primehook: { apk: "https://t.me/+T33Htf73m6VhZDc1", demo: "https://youtu.be/sample" },
+    drake: { apk: "", demo: "" },
+    myth: { apk: "", demo: "" },
+    phantom: { apk: "", demo: "" },
+    aimhack: { apk: "", demo: "" },
+    dripclient: { apk: "", demo: "" },
+    xreg: { apk: "", demo: "" }
+  },
   prices: {
     drake: { "1h": 9, "3h": 35, "6h": 65 },
     myth: { "1h": 14, "3h": 39, "6h": 72 },
@@ -66,6 +75,7 @@ try {
       const parsed = JSON.parse(raw);
       if (parsed.products) shopDb.products = parsed.products;
       if (parsed.maintenance) shopDb.maintenance = { ...shopDb.maintenance, ...parsed.maintenance };
+      if (parsed.links) shopDb.links = { ...shopDb.links, ...parsed.links };
       if (parsed.prices) shopDb.prices = { ...shopDb.prices, ...parsed.prices };
       if (parsed.stock) shopDb.stock = { ...shopDb.stock, ...parsed.stock };
       if (parsed.users) shopDb.users = parsed.users;
@@ -161,6 +171,23 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
           reply_markup: menu.reply_markup
         });
       }
+      else if (text.startsWith('/setlinks')) {
+        if (from.id !== ADMIN_ID) return;
+        const parts = text.split(" ");
+        if (parts.length < 4) {
+          await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text: "⚠️ Use: <code>/setlinks panel apk_url demo_url</code>", parse_mode: "HTML" });
+          return;
+        }
+        const panel = parts[1].toLowerCase();
+        const apkUrl = parts[2];
+        const demoUrl = parts[3];
+
+        if (!shopDb.links) shopDb.links = {};
+        shopDb.links[panel] = { apk: apkUrl, demo: demoUrl };
+        saveData();
+
+        await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text: `✅ Links updated successfully for <b>${panel.toUpperCase()}</b>!`, parse_mode: "HTML" });
+      }
       else if (text.startsWith('/addproduct')) {
         if (from.id !== ADMIN_ID) return;
         const parts = text.split(" ");
@@ -172,6 +199,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
         if (shopDb.maintenance[productKey] === undefined) shopDb.maintenance[productKey] = false;
         if (!shopDb.stock[productKey]) shopDb.stock[productKey] = { "1h": [], "3h": [], "6h": [] };
         if (!shopDb.prices[productKey]) shopDb.prices[productKey] = { "1h": 10, "3h": 30, "6h": 60 };
+        if (!shopDb.links[productKey]) shopDb.links[productKey] = { apk: "", demo: "" };
         saveData();
 
         await axios.post(`${TELEGRAM_API}/sendMessage`, {
@@ -189,6 +217,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
         delete shopDb.maintenance[productKey];
         delete shopDb.prices[productKey];
         delete shopDb.stock[productKey];
+        delete shopDb.links[productKey];
         saveData();
 
         await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text: `🗑️ Product <code>${productKey}</code> removed successfully!`, parse_mode: "HTML" });
@@ -205,6 +234,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
         if (!shopDb.products[panel]) {
           shopDb.products[panel] = panel.toUpperCase();
           if (shopDb.maintenance[panel] === undefined) shopDb.maintenance[panel] = false;
+          if (!shopDb.links[panel]) shopDb.links[panel] = { apk: "", demo: "" };
         }
 
         if (!shopDb.stock[panel]) shopDb.stock[panel] = {};
@@ -234,6 +264,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
         if (!shopDb.products[panel]) {
           shopDb.products[panel] = panel.toUpperCase();
           if (shopDb.maintenance[panel] === undefined) shopDb.maintenance[panel] = false;
+          if (!shopDb.links[panel]) shopDb.links[panel] = { apk: "", demo: "" };
         }
 
         if (!shopDb.stock[panel]) shopDb.stock[panel] = {};
@@ -357,7 +388,13 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
           return;
         }
 
-        const text = `⚡ <b>${panelName} PACKAGES</b>\n\nSelect duration & price:`;
+        let panelText = `⚡ <b>${panelName}</b>\n\n`;
+        const pLinks = shopDb.links && shopDb.links[panelKey] ? shopDb.links[panelKey] : { apk: "", demo: "" };
+        
+        if (pLinks.apk) {
+          panelText += `📦 <b>APK LINK</b> 🔗\n<a href="${pLinks.apk}">👉 Click Here to Download APK</a>\n\n`;
+        }
+        panelText += `Select Duration:`;
         
         if (!shopDb.stock[panelKey]) shopDb.stock[panelKey] = { "1h": [], "3h": [], "6h": [] };
         if (!shopDb.prices[panelKey]) shopDb.prices[panelKey] = {};
@@ -376,10 +413,17 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
           }
         }
 
+        if (pLinks.demo) {
+          durationButtons.push([{ text: "▶️ Watch Demo", url: pLinks.demo }]);
+        }
+
         durationButtons.push([{ text: "🔙 Back to Shop", callback_data: "shop" }]);
 
         const markup = { inline_keyboard: durationButtons };
-        await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text, parse_mode: "HTML", reply_markup: markup });
+        await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text: panelText, parse_mode: "HTML", reply_markup: markup, disable_web_page_preview: true });
+      }
+      else if (data.startsWith("notify_")) {
+        await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, { callback_query_id: cq.id, text: "🔔 Notification set!", show_alert: true });
       }
       else if (data === "nostock") {
         await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, { callback_query_id: cq.id, text: "❌ Yeh package out of stock hai!", show_alert: true });
@@ -552,20 +596,18 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
 
         await deletePrevMessage();
 
-        // Send Telegram Animated Dice (emoji: 🎲)
         const diceMsg = await axios.post(`${TELEGRAM_API}/sendDice`, {
           chat_id: chatId,
           emoji: "🎲"
         });
 
-        const diceValue = diceMsg.data.result.dice.value; // 1 to 6
-        const rewardAmount = parseFloat((diceValue * 0.5).toFixed(2)); // e.g., 0.5 to 3.0 INR
+        const diceValue = diceMsg.data.result.dice.value;
+        const rewardAmount = parseFloat((diceValue * 0.5).toFixed(2));
 
         user.lastSpinTime = now;
         user.balance += rewardAmount;
         saveData();
 
-        // Wait 3 seconds for dice animation to finish on user screen, then send result
         setTimeout(async () => {
           await axios.post(`${TELEGRAM_API}/sendMessage`, {
             chat_id: chatId,
@@ -643,14 +685,56 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
 });
 
 async function sendKeypadMenu(chatId, user) {
-  const text = `🏦 <b>Custom Amount</b>\nAmount: <b>₹${user.customInput}</b>`;
-  const markup = { inline_keyboard: [[{ text: "1", callback_data: "num_1" }, { text: "2", callback_data: "num_2" }, { text: "3", callback_data: "num_3" }], [{ text: "4", callback_data: "num_4" }, { text: "5", callback_data: "num_5" }, { text: "6", callback_data: "num_6" }], [{ text: "7", callback_data: "num_7" }, { text: "8", callback_data: "num_8" }, { text: "9", callback_data: "num_9" }], [{ text: "❌", callback_data: "num_del" }, { text: "0", callback_data: "num_0" }, { text: "✅", callback_data: "num_confirm" }], [{ text: "🔙 Back", callback_data: "main_menu" }]] };
+  const text = 
+`🏦 <b>Custom Amount</b>
+
+──────────────────────
+Method: 🟢 <b>UPI (FamPay / Direct)</b>
+Min: ₹1 | Max: ₹5,000
+──────────────────────
+
+Apna amount enter karo aur payment complete karke balance add karwao.
+
+🔻 <b>Amount:</b> ₹${user.customInput} (~$${(user.customInput / config.CURRENCY_RATE).toFixed(2)})
+
+<i>Amount type karo — buttons se:</i>`;
+
+  const markup = { 
+    inline_keyboard: [
+      [{ text: "💰 1", callback_data: "num_1" }, { text: "💰 2", callback_data: "num_2" }, { text: "💰 3", callback_data: "num_3" }], 
+      [{ text: "💰 4", callback_data: "num_4" }, { text: "💰 5", callback_data: "num_5" }, { text: "💰 6", callback_data: "num_6" }], 
+      [{ text: "💰 7", callback_data: "num_7" }, { text: "💰 8", callback_data: "num_8" }, { text: "💰 9", callback_data: "num_9" }], 
+      [{ text: "❌ Delete", callback_data: "num_del" }, { text: "💰 0", callback_data: "num_0" }, { text: "✅ Confirm", callback_data: "num_confirm" }], 
+      [{ text: "🔙 Back", callback_data: "main_menu" }]
+    ] 
+  };
   await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text, parse_mode: "HTML", reply_markup: markup });
 }
 
 async function updateKeypadMenu(chatId, messageId, user) {
-  const text = `🏦 <b>Custom Amount</b>\nAmount: <b>₹${user.customInput}</b>`;
-  const markup = { inline_keyboard: [[{ text: "1", callback_data: "num_1" }, { text: "2", callback_data: "num_2" }, { text: "3", callback_data: "num_3" }], [{ text: "4", callback_data: "num_4" }, { text: "5", callback_data: "num_5" }, { text: "6", callback_data: "num_6" }], [{ text: "7", callback_data: "num_7" }, { text: "8", callback_data: "num_8" }, { text: "9", callback_data: "num_9" }], [{ text: "❌", callback_data: "num_del" }, { text: "0", callback_data: "num_0" }, { text: "✅", callback_data: "num_confirm" }], [{ text: "🔙 Back", callback_data: "main_menu" }]] };
+  const text = 
+`🏦 <b>Custom Amount</b>
+
+──────────────────────
+Method: 🟢 <b>UPI (FamPay / Direct)</b>
+Min: ₹1 | Max: ₹5,000
+──────────────────────
+
+Apna amount enter karo aur payment complete karke balance add karwao.
+
+🔻 <b>Amount:</b> ₹${user.customInput} (~$${(user.customInput / config.CURRENCY_RATE).toFixed(2)})
+
+<i>Amount type karo — buttons se:</i>`;
+
+  const markup = { 
+    inline_keyboard: [
+      [{ text: "💰 1", callback_data: "num_1" }, { text: "💰 2", callback_data: "num_2" }, { text: "💰 3", callback_data: "num_3" }], 
+      [{ text: "💰 4", callback_data: "num_4" }, { text: "💰 5", callback_data: "num_5" }, { text: "💰 6", callback_data: "num_6" }], 
+      [{ text: "💰 7", callback_data: "num_7" }, { text: "💰 8", callback_data: "num_8" }, { text: "💰 9", callback_data: "num_9" }], 
+      [{ text: "❌ Delete", callback_data: "num_del" }, { text: "💰 0", callback_data: "num_0" }, { text: "✅ Confirm", callback_data: "num_confirm" }], 
+      [{ text: "🔙 Back", callback_data: "main_menu" }]
+    ] 
+  };
   try {
     await axios.post(`${TELEGRAM_API}/editMessageText`, { chat_id: chatId, message_id: messageId, text, parse_mode: "HTML", reply_markup: markup });
   } catch (e) {}
