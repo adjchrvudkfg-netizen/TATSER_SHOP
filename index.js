@@ -12,7 +12,7 @@ const TELEGRAM_API = `https://api.telegram.org/bot${TOKEN}`;
 const ADMIN_ID = 8805135936; 
 const UPI_ID = "9694421148@fam";
 
-// Permanent storage file path on Render/Local
+// Permanent storage file path
 const dbFilePath = path.join(__dirname, 'shop_db.json');
 
 // Default Database Structure
@@ -57,7 +57,7 @@ let shopDb = {
   processedOrders: {}
 };
 
-// Load saved data from file if exists
+// Load saved data safely
 try {
   if (fs.existsSync(dbFilePath)) {
     const raw = fs.readFileSync(dbFilePath, 'utf8');
@@ -68,14 +68,20 @@ try {
     if (parsed.stock) shopDb.stock = parsed.stock;
     if (parsed.users) shopDb.users = parsed.users;
     if (parsed.processedOrders) shopDb.processedOrders = parsed.processedOrders;
+    console.log("✅ Database loaded successfully from file!");
   }
-} catch (e) {}
+} catch (e) {
+  console.log("⚠️ Error loading database, using default:", e.message);
+}
 
-// Save data permanently function
+// Save data function with immediate sync
 function saveData() {
   try {
     fs.writeFileSync(dbFilePath, JSON.stringify(shopDb, null, 2), 'utf8');
-  } catch (e) {}
+    console.log("💾 Database saved successfully!");
+  } catch (e) {
+    console.log("❌ Error saving database:", e.message);
+  }
 }
 
 function getUser(userId, firstName) {
@@ -152,26 +158,14 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
         });
       }
       else if (text.startsWith('/addproduct')) {
-        if (from.id !== ADMIN_ID) {
-          await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text: "❌ Aap admin nahi hain!" });
-          return;
-        }
-
+        if (from.id !== ADMIN_ID) return;
         const parts = text.split(" ");
-        if (parts.length < 3) {
-          await axios.post(`${TELEGRAM_API}/sendMessage`, {
-            chat_id: chatId,
-            text: "⚠️ <b>Invalid Format!</b>\nUse: <code>/addproduct key_name Display Name</code>",
-            parse_mode: "HTML"
-          });
-          return;
-        }
-
+        if (parts.length < 3) return;
         const productKey = parts[1].toLowerCase();
         const productDisplayName = parts.slice(2).join(" ");
 
         shopDb.products[productKey] = productDisplayName;
-        shopDb.maintenance[productKey] = false;
+        if (shopDb.maintenance[productKey] === undefined) shopDb.maintenance[productKey] = false;
         if (!shopDb.stock[productKey]) shopDb.stock[productKey] = { "1h": [], "3h": [], "6h": [] };
         if (!shopDb.prices[productKey]) shopDb.prices[productKey] = { "1h": 10, "3h": 30, "6h": 60 };
         saveData();
@@ -183,17 +177,9 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
         });
       }
       else if (text.startsWith('/removeproduct')) {
-        if (from.id !== ADMIN_ID) {
-          await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text: "❌ Aap admin nahi hain!" });
-          return;
-        }
-
+        if (from.id !== ADMIN_ID) return;
         const parts = text.split(" ");
-        if (parts.length < 2) {
-          await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text: "⚠️ Use: <code>/removeproduct key_name</code>", parse_mode: "HTML" });
-          return;
-        }
-
+        if (parts.length < 2) return;
         const productKey = parts[1].toLowerCase();
         delete shopDb.products[productKey];
         delete shopDb.maintenance[productKey];
@@ -204,30 +190,17 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
         await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text: `🗑️ Product <code>${productKey}</code> removed successfully!`, parse_mode: "HTML" });
       }
       else if (text.startsWith('/addbulk')) {
-        if (from.id !== ADMIN_ID) {
-          await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text: "❌ Aap admin nahi hain!" });
-          return;
-        }
-
+        if (from.id !== ADMIN_ID) return;
         const lines = text.split('\n');
         const firstLineParts = lines[0].split(' ');
-
-        if (firstLineParts.length < 3) {
-          await axios.post(`${TELEGRAM_API}/sendMessage`, {
-            chat_id: chatId,
-            text: "⚠️ <b>Invalid Format!</b>\nUse:\n<code>/addbulk panel duration</code>\n(aur neeche apni keys paste kar dein)",
-            parse_mode: "HTML"
-          });
-          return;
-        }
+        if (firstLineParts.length < 3) return;
 
         const panel = firstLineParts[1].toLowerCase();
         const duration = firstLineParts[2].toLowerCase();
 
-        // Auto-create product if not exists
         if (!shopDb.products[panel]) {
           shopDb.products[panel] = panel.toUpperCase();
-          shopDb.maintenance[panel] = false;
+          if (shopDb.maintenance[panel] === undefined) shopDb.maintenance[panel] = false;
         }
 
         if (!shopDb.stock[panel]) shopDb.stock[panel] = {};
@@ -235,11 +208,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
         if (!shopDb.prices[panel]) shopDb.prices[panel] = { "1h": 49, "3h": 129, "6h": 249 };
 
         const newKeys = lines.slice(1).map(k => k.trim()).filter(k => k.length > 0);
-
-        if (newKeys.length === 0) {
-          await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text: "❌ Koi key nahi mili! Please lines mein keys dalein." });
-          return;
-        }
+        if (newKeys.length === 0) return;
 
         shopDb.stock[panel][duration].push(...newKeys);
         saveData();
@@ -251,24 +220,16 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
         });
       }
       else if (text.startsWith('/addkey')) {
-        if (from.id !== ADMIN_ID) {
-          await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text: "❌ Aap admin nahi hain!" });
-          return;
-        }
-
+        if (from.id !== ADMIN_ID) return;
         const parts = text.split(" ");
-        if (parts.length < 4) {
-          await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text: "⚠️ Use: <code>/addkey panel duration key</code>", parse_mode: "HTML" });
-          return;
-        }
-
+        if (parts.length < 4) return;
         const panel = parts[1].toLowerCase();
         const duration = parts[2].toLowerCase();
         const newKey = parts.slice(3).join(" ");
 
         if (!shopDb.products[panel]) {
           shopDb.products[panel] = panel.toUpperCase();
-          shopDb.maintenance[panel] = false;
+          if (shopDb.maintenance[panel] === undefined) shopDb.maintenance[panel] = false;
         }
 
         if (!shopDb.stock[panel]) shopDb.stock[panel] = {};
@@ -296,24 +257,20 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
         saveData();
         await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text: `✅ Price updated for ${panel} (${duration}) to ₹${price}` });
       }
-      else if (text.startsWith('/removeprice')) {
-        if (from.id !== ADMIN_ID) return;
-        const parts = text.split(" ");
-        if (parts.length < 3) return;
-        const panel = parts[1].toLowerCase();
-        const duration = parts[2].toLowerCase();
-        if (shopDb.prices[panel]) delete shopDb.prices[panel][duration];
-        saveData();
-        await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text: `🗑️ Price removed for ${panel} (${duration})` });
-      }
       else if (text.startsWith('/maintenance')) {
         if (from.id !== ADMIN_ID) return;
         const parts = text.split(" ");
         if (parts.length < 2) return;
         const productKey = parts[1].toLowerCase();
+        
         shopDb.maintenance[productKey] = !shopDb.maintenance[productKey];
         saveData();
-        await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text: `🔧 Maintenance status updated for ${productKey}: ${shopDb.maintenance[productKey]}` });
+        
+        await axios.post(`${TELEGRAM_API}/sendMessage`, { 
+          chat_id: chatId, 
+          text: `🔧 Maintenance status for <b>${productKey}</b> is now: <b>${shopDb.maintenance[productKey]}</b>`, 
+          parse_mode: "HTML" 
+        });
       }
       else if (text.startsWith('/addupdate')) {
         if (from.id !== ADMIN_ID) return;
@@ -420,9 +377,6 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
         const markup = { inline_keyboard: durationButtons };
         await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text, parse_mode: "HTML", reply_markup: markup });
       }
-      else if (data.startsWith("notify_")) {
-        await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, { callback_query_id: cq.id, text: "🔔 Notification set!", show_alert: true });
-      }
       else if (data === "nostock") {
         await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, { callback_query_id: cq.id, text: "❌ Yeh package out of stock hai!", show_alert: true });
       }
@@ -443,7 +397,6 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
           user.totalSpent = (user.totalSpent || 0) + price;
 
           await deletePrevMessage();
-          // ONLY shift (remove) the exact key assigned to this user, keeping the rest of the stock intact!
           const licenseKey = shopDb.stock[panel][duration].shift();
           saveData();
 
