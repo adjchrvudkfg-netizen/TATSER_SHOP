@@ -11,6 +11,7 @@ const TOKEN = config.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_API = `https://api.telegram.org/bot${TOKEN}`;
 const ADMIN_ID = 8805135936; 
 const UPI_ID = "9694421148@fam";
+const SUPPORT_CHANNEL = "https://t.me/adityachoudhary5";
 
 // Permanent storage file path
 const dbFilePath = path.join(__dirname, 'shop_db.json');
@@ -57,7 +58,7 @@ let shopDb = {
   processedOrders: {}
 };
 
-// Load saved data safely with deep merging so defaults aren't lost
+// Load saved data safely with deep merging
 try {
   if (fs.existsSync(dbFilePath)) {
     const raw = fs.readFileSync(dbFilePath, 'utf8');
@@ -72,7 +73,6 @@ try {
       console.log("✅ Database loaded successfully from file!");
     }
   } else {
-    // Create initial file if not exists
     saveData();
   }
 } catch (e) {
@@ -83,7 +83,6 @@ try {
 function saveData() {
   try {
     fs.writeFileSync(dbFilePath, JSON.stringify(shopDb, null, 2), 'utf8');
-    console.log("💾 Database saved successfully!");
   } catch (e) {
     console.log("❌ Error saving database:", e.message);
   }
@@ -382,9 +381,6 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
         const markup = { inline_keyboard: durationButtons };
         await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text, parse_mode: "HTML", reply_markup: markup });
       }
-      else if (data.startsWith("notify_")) {
-        await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, { callback_query_id: cq.id, text: "🔔 Notification set!", show_alert: true });
-      }
       else if (data === "nostock") {
         await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, { callback_query_id: cq.id, text: "❌ Yeh package out of stock hai!", show_alert: true });
       }
@@ -470,19 +466,82 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
       else if (data === "referral") {
         await deletePrevMessage();
         const inviteLink = `https://t.me/T4TSAR_NEW_SHOP_BOT?start=ref_${user.id}`;
-        await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text: `🔗 <b>AFFILIATE</b>\n<code>${inviteLink}</code>`, parse_mode: "HTML", reply_markup: { inline_keyboard: [[{ text: "🔙 Back", callback_data: "main_menu" }]] } });
+        const refText = 
+`💎 <b>TATSER AFFILIATE PROGRAM</b> 💎
+
+✨ <i>Invite your friends and earn rewards instantly when they join and shop!</i>
+
+🔗 <b>Your Exclusive Invite Link:</b>
+<code>${inviteLink}</code>
+
+👥 <b>Total Referrals:</b> <code>${user.totalReferrals || 0}</code>
+💰 <b>Total Earned:</b> <code>₹${(user.lifeTimeEarned || 0).toFixed(2)}</code>
+
+<i>Share this link in groups & friends to start earning!</i> 🚀`;
+
+        await axios.post(`${TELEGRAM_API}/sendMessage`, { 
+          chat_id: chatId, 
+          text: refText, 
+          parse_mode: "HTML", 
+          reply_markup: { 
+            inline_keyboard: [
+              [{ text: "📤 Share Invite Link", url: `https://t.me/share/url?url=${encodeURIComponent(inviteLink)}&text=${encodeURIComponent("🔥 Join TATSER SHOP for premium digital keys & instant delivery!")}` }],
+              [{ text: "🔙 Main Menu", callback_data: "main_menu" }]
+            ] 
+          } 
+        });
       }
       else if (data === "support") {
         await deletePrevMessage();
-        await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text: `🤖 <b>SUPPORT</b>\nAdmin: @TATSER_SUPPORT`, parse_mode: "HTML", reply_markup: { inline_keyboard: [[{ text: "💬 Chat", url: "https://t.me/+hYQLiyHcU3kxMTJl" }], [{ text: "🔙 Back", callback_data: "main_menu" }]] } });
+        await axios.post(`${TELEGRAM_API}/sendMessage`, { 
+          chat_id: chatId, 
+          text: `🤖 <b>TATSER 24/7 SUPPORT CENTER</b>\n\nNeed help with payments, keys, or orders? Click below to chat directly with admin support!`, 
+          parse_mode: "HTML", 
+          reply_markup: { 
+            inline_keyboard: [
+              [{ text: "💬 Chat with Support", url: SUPPORT_CHANNEL }],
+              [{ text: "🔙 Main Menu", callback_data: "main_menu" }]
+            ] 
+          } 
+        });
       }
       else if (data === "profile") {
         await deletePrevMessage();
-        await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text: `👤 <b>PROFILE</b>\nID: <code>${user.id}</code>\nName: ${user.name}\nBalance: ₹${user.balance.toFixed(2)}`, parse_mode: "HTML", reply_markup: { inline_keyboard: [[{ text: "🔙 Back", callback_data: "main_menu" }]] } });
+        const profileText = 
+`👤 <b>USER ACCOUNT PROFILE</b> 👤
+
+──────────────────────
+🏷️ <b>Name:</b> <code>${user.name}</code>
+🆔 <b>User ID:</b> <code>${user.id}</code>
+💰 <b>Wallet Balance:</b> <code>₹${user.balance.toFixed(2)}</code>
+──────────────────────
+📦 <b>Total Purchases:</b> <code>${user.totalPurchases || 0} orders</code>
+💸 <b>Total Spent:</b> <code>₹${(user.totalSpent || 0).toFixed(2)}</code>
+👥 <b>Referral Count:</b> <code>${user.totalReferrals || 0} users</code>
+──────────────────────
+
+✨ <i>Thank you for using TATSER SHOP!</i>`;
+
+        await axios.post(`${TELEGRAM_API}/sendMessage`, { 
+          chat_id: chatId, 
+          text: profileText, 
+          parse_mode: "HTML", 
+          reply_markup: { 
+            inline_keyboard: [
+              [{ text: "💳 Add Balance", callback_data: "add_balance" }, { text: "📦 My Orders", callback_data: "my_orders" }],
+              [{ text: "🔙 Main Menu", callback_data: "main_menu" }]
+            ] 
+          } 
+        });
       }
       else if (data === "my_orders") {
         await deletePrevMessage();
-        await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text: `📦 <b>Orders</b>\nTotal: ${user.totalPurchases || 0}`, parse_mode: "HTML", reply_markup: { inline_keyboard: [[{ text: "🔙 Back", callback_data: "main_menu" }]] } });
+        await axios.post(`${TELEGRAM_API}/sendMessage`, { 
+          chat_id: chatId, 
+          text: `📦 <b>My Orders History</b>\n\nTotal Purchases: <b>${user.totalPurchases || 0}</b>\nTotal Spent: <b>₹${(user.totalSpent || 0).toFixed(2)}</b>`, 
+          parse_mode: "HTML", 
+          reply_markup: { inline_keyboard: [[{ text: "🔙 Main Menu", callback_data: "main_menu" }]] } 
+        });
       }
       else if (data === "daily_spin") {
         const now = Date.now();
@@ -490,12 +549,33 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
           await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, { callback_query_id: cq.id, text: "⏳ 24 ghante mein ek baar spin milta hai!", show_alert: true });
           return;
         }
-        user.lastSpinTime = now;
-        const wonAmount = parseFloat((Math.random() * (1.00 - 0.10) + 0.10).toFixed(2));
-        user.balance += wonAmount;
-        saveData();
+
         await deletePrevMessage();
-        await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text: `🎡 <b>SPIN WON: ₹${wonAmount}</b>`, parse_mode: "HTML", reply_markup: { inline_keyboard: [[{ text: "🔙 Back", callback_data: "main_menu" }]] } });
+
+        // Send Telegram Animated Dice (emoji: 🎲)
+        const diceMsg = await axios.post(`${TELEGRAM_API}/sendDice`, {
+          chat_id: chatId,
+          emoji: "🎲"
+        });
+
+        const diceValue = diceMsg.data.result.dice.value; // 1 to 6
+        const rewardAmount = parseFloat((diceValue * 0.5).toFixed(2)); // e.g., 0.5 to 3.0 INR
+
+        user.lastSpinTime = now;
+        user.balance += rewardAmount;
+        saveData();
+
+        // Wait 3 seconds for dice animation to finish on user screen, then send result
+        setTimeout(async () => {
+          await axios.post(`${TELEGRAM_API}/sendMessage`, {
+            chat_id: chatId,
+            text: `🎡 <b>DAILY SPIN RESULT</b> 🎡\n\n🎲 <b>Dice Number:</b> ${diceValue}\n🎉 <b>Congratulations! You won ₹${rewardAmount}</b> added to your wallet!\n\n💰 <b>New Balance:</b> ₹${user.balance.toFixed(2)}`,
+            parse_mode: "HTML",
+            reply_markup: {
+              inline_keyboard: [[{ text: "🔙 Main Menu", callback_data: "main_menu" }]]
+            }
+          });
+        }, 3000);
       }
       else if (data.startsWith("check_prod_")) {
         const parts = data.split("_");
@@ -587,4 +667,3 @@ app.listen(PORT, async () => {
     } catch (e) {}
   }
 });
-        
