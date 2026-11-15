@@ -12,7 +12,7 @@ const ADMIN_ID = 8805135936;
 const UPI_ID = "9694421148@fam";
 const SUPPORT_CHANNEL = "https://t.me/adityachoudhary5";
 
-// MongoDB Connection URI from Environment Variables or direct fallback
+// MongoDB Connection URI
 const MONGO_URI = process.env.MONGO_URI || "mongodb+srv://Adityachoudhary5:ADity%4020082006@cluster0.jkqvns1.mongodb.net/?retryWrites=true&w=majority";
 
 const client = new MongoClient(MONGO_URI);
@@ -128,7 +128,7 @@ async function updateUser(user) {
 }
 
 function getMainMenuMarkup(user) {
-  const usdBal = (user.balance / config.CURRENCY_RATE).toFixed(2);
+  const usdBal = (user.balance / 83).toFixed(2);
   
   const welcomeText = 
 `🌸 - <b>TATSER PANEL SHOP</b> - 🌸
@@ -748,7 +748,7 @@ Min: ₹1 | Max: ₹5,000
 
 Apna amount enter karo aur payment complete karke balance add karwao.
 
-🔻 <b>Amount:</b> ₹${user.customInput} (~$${(user.customInput / config.CURRENCY_RATE).toFixed(2)})
+🔻 <b>Amount:</b> ₹${user.customInput} (~$${(user.customInput / 83).toFixed(2)})
 
 <i>Amount type karo — buttons se:</i>`;
 
@@ -775,7 +775,7 @@ Min: ₹1 | Max: ₹5,000
 
 Apna amount enter karo aur payment complete karke balance add karwao.
 
-🔻 <b>Amount:</b> ₹${user.customInput} (~$${(user.customInput / config.CURRENCY_RATE).toFixed(2)})
+🔻 <b>Amount:</b> ₹${user.customInput} (~$${(user.customInput / 83).toFixed(2)})
 
 <i>Amount type karo — buttons se:</i>`;
 
