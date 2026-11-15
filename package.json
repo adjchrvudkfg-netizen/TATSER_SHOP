@@ -1,14 +1,15 @@
 {
-  "name": "tatser-shop-bot",
+  "name": "tatser-panel-shop",
   "version": "1.0.0",
-  "description": "Modular Telegram Shop Bot with UPI QR and Admin Approval",
+  "description": "Telegram shop bot with MongoDB permanent storage",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
+    "express": "^4.19.2",
     "axios": "^1.6.8",
-    "express": "^4.19.2"
+    "mongoose": "^8.3.1"
   },
   "engines": {
     "node": ">=18.0.0"
