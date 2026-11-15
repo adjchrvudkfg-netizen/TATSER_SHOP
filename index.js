@@ -16,9 +16,6 @@ const SUPPORT_CHANNEL = "https://t.me/adityachoudhary5";
 // 🌍 MongoDB Atlas Connection (Permanent Data Storage)
 mongoose.connect(process.env.MONGO_URI)
 .then(() => console.log("✅ Connected successfully to MongoDB Atlas!"))
-.catch((err) => console.error("❌ MongoDB Connection Error:", err
-));
-.then(() => console.log("✅ Connected successfully to MongoDB Atlas!"))
 .catch((err) => console.error("❌ MongoDB Connection Error:", err));
 
 // 📊 Database Schema (Data won't auto-delete)
@@ -52,9 +49,8 @@ async function getDb() {
     return data;
 }
 
-// 📢 /update Command Handler (With Decorated Message & Support Button)
-// Note: Agar aap Telegraf ya koi specific bot library use kar rahe hain, toh uske handler ke mutabiq ise rakh sakte hain.
-app.post(`/bot\${TOKEN}`, async (req, res) => {
+// 📢 /update Command Handler
+app.post(`/bot${TOKEN}`, async (req, res) => {
     try {
         const update = req.body;
         if (update.message && update.message.text) {
@@ -62,10 +58,9 @@ app.post(`/bot\${TOKEN}`, async (req, res) => {
             const userId = update.message.from.id;
             const text = update.message.text;
 
-            // /update command logic
             if (text.startsWith('/update')) {
                 if (userId !== ADMIN_ID) {
-                    await axios.post(`\${TELEGRAM_API}/sendMessage`, {
+                    await axios.post(`${TELEGRAM_API}/sendMessage`, {
                         chat_id: chatId,
                         text: "❌ Aap admin nahi hain!"
                     });
@@ -74,7 +69,7 @@ app.post(`/bot\${TOKEN}`, async (req, res) => {
 
                 const updateMessage = `╔═══════════════════════╗\n      📢 𝗦𝗛𝗢𝗣 𝗨𝗣𝗗𝗔𝗧𝗘 📢\n╚═══════════════════════╝\n\n⚠️ 𝗕𝗢𝗧 𝗖𝗥𝗔𝗦𝗛𝗘𝗗 / 𝗧𝗘𝗖𝗛𝗡𝗜𝗖𝗔𝗟 𝗜𝗦𝗦𝗨𝗘 ⚠️\n\n━━━━━━━━━━━━━━━━━━━━━━━\n🚨 𝗜𝗺𝗽𝗼𝗿𝘁𝗮𝗻𝘁 𝗡𝗼𝘁𝗶𝗰𝗲:\n• Bot abhi crash ho gaya hai, isliye koi bhi use mat karna! ❌\n• Abhi koi bhi user wallet mein amount add mat karna! 💸🚫\n• Jaise hi bot wapas sahi hoga, yahan bata diya jayega. ⏳✅\n━━━━━━━━━━━━━━━━━━━━━━━\n\n💬 𝗞𝗲𝘆𝘀 𝗞𝗵𝗮𝗿𝗶𝗱𝗻𝗶 𝗛𝗮𝗶?\nAgar aapko abhi key chahiye toh niche **Support** button se admin ko personal DM karein! 👇⚡`;
 
-                await axios.post(`\${TELEGRAM_API}/sendMessage`, {
+                await axios.post(`${TELEGRAM_API}/sendMessage`, {
                     chat_id: chatId,
                     text: updateMessage,
                     parse_mode: 'Markdown',
@@ -97,5 +92,5 @@ app.post(`/bot\${TOKEN}`, async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-    console.log(`🚀 Server is running on port \${PORT}`);
+    console.log(`🚀 Server is running on port ${PORT}`);
 });
