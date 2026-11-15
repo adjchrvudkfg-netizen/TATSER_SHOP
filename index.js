@@ -14,10 +14,10 @@ const UPI_ID = "9694421148@fam";
 const SUPPORT_CHANNEL = "https://t.me/adityachoudhary5";
 
 // 🌍 MongoDB Atlas Connection (Permanent Data Storage)
-mongoose.connect(process.env.MONGO_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true
-})
+mongoose.connect(process.env.MONGO_URI)
+.then(() => console.log("✅ Connected successfully to MongoDB Atlas!"))
+.catch((err) => console.error("❌ MongoDB Connection Error:", err
+));
 .then(() => console.log("✅ Connected successfully to MongoDB Atlas!"))
 .catch((err) => console.error("❌ MongoDB Connection Error:", err));
 
