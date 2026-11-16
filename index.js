@@ -12,7 +12,7 @@ const ADMIN_ID = 8805135936;
 const UPI_ID = "9694421148@fam";
 const SUPPORT_CHANNEL = "https://t.me/adityachoudhary5";
 
-// MongoDB Connection URI with SSL bypass options for Render
+// MongoDB Connection URI with SSL options
 const MONGO_URI = process.env.MONGO_URI || "mongodb+srv://Adityachoudhary5:ADity%4020082006@cluster0.jkqvns1.mongodb.net/?retryWrites=true&w=majority";
 
 const client = new MongoClient(MONGO_URI, {
@@ -22,10 +22,11 @@ const client = new MongoClient(MONGO_URI, {
 });
 let db, usersCollection, shopCollection;
 
-
 async function connectDB() {
   try {
-    await client.connect();
+    if (!client.topology || !client.topology.isConnected()) {
+      await client.connect();
+    }
     db = client.db("tatser_shop");
     usersCollection = db.collection("users");
     shopCollection = db.collection("shop_data");
@@ -89,6 +90,7 @@ const defaultShopData = {
 };
 
 async function initializeDefaultShopData() {
+  if (!shopCollection) await connectDB();
   const existing = await shopCollection.findOne({ _id: "config" });
   if (!existing) {
     await shopCollection.insertOne(defaultShopData);
@@ -97,6 +99,7 @@ async function initializeDefaultShopData() {
 }
 
 async function getShopData() {
+  if (!shopCollection) await connectDB();
   let data = await shopCollection.findOne({ _id: "config" });
   if (!data) {
     await initializeDefaultShopData();
@@ -106,10 +109,12 @@ async function getShopData() {
 }
 
 async function saveShopData(data) {
+  if (!shopCollection) await connectDB();
   await shopCollection.updateOne({ _id: "config" }, { $set: data }, { upsert: true });
 }
 
 async function getUser(userId, firstName) {
+  if (!usersCollection) await connectDB();
   let user = await usersCollection.findOne({ id: userId });
   if (!user) {
     user = {
@@ -129,6 +134,7 @@ async function getUser(userId, firstName) {
 }
 
 async function updateUser(user) {
+  if (!usersCollection) await connectDB();
   await usersCollection.updateOne({ id: user.id }, { $set: user }, { upsert: true });
 }
 
@@ -715,7 +721,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
         shopDbData.processedOrders[parts[4]] = true;
         await saveShopData(shopDbData);
         
-        let targetUser = await usersCollection.findOne({ id: parts[2] });
+        let targetUser = await getUser(parseInt(parts[2]), "User");
         if (targetUser) {
           targetUser.balance += parseFloat(parts[3]);
           await updateUser(targetUser);
