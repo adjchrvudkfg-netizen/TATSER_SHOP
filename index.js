@@ -12,11 +12,16 @@ const ADMIN_ID = 8805135936;
 const UPI_ID = "9694421148@fam";
 const SUPPORT_CHANNEL = "https://t.me/adityachoudhary5";
 
-// MongoDB Connection URI
+// MongoDB Connection URI with SSL bypass options for Render
 const MONGO_URI = process.env.MONGO_URI || "mongodb+srv://Adityachoudhary5:ADity%4020082006@cluster0.jkqvns1.mongodb.net/?retryWrites=true&w=majority";
 
-const client = new MongoClient(MONGO_URI);
+const client = new MongoClient(MONGO_URI, {
+  tls: true,
+  tlsAllowInvalidCertificates: true,
+  tlsAllowInvalidHostnames: true
+});
 let db, usersCollection, shopCollection;
+
 
 async function connectDB() {
   try {
