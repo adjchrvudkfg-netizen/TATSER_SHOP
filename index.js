@@ -13,7 +13,8 @@ const UPI_ID = "9694421148@fam";
 const SUPPORT_CHANNEL = "https://t.me/adityachoudhary5";
 
 // MongoDB URI
-const MONGO_URI = process.env.MONGO_URI || "mongodb+srv://Adityachoudhary5:ADity%4020082006@cluster0.jkqvns1.mongodb.net/?retryWrites=true&w=majority";
+const MONGO_URI = process.env.MONGO_URI || "mongodb+srv://adityachoudhary20082006:<aditya20082006>@cluster0.n2ftds7.mongodb.net/
+";
 
 // Mongoose Connection with explicit SSL/TLS options for Render
 mongoose.connect(MONGO_URI, {
