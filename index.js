@@ -1,6 +1,6 @@
 const express = require('express');
 const axios = require('axios');
-const { MongoClient } = require('mongodb');
+const mongoose = require('mongoose');
 const config = require('./config');
 
 const app = express();
@@ -12,33 +12,41 @@ const ADMIN_ID = 8805135936;
 const UPI_ID = "9694421148@fam";
 const SUPPORT_CHANNEL = "https://t.me/adityachoudhary5";
 
-// MongoDB Connection URI with SSL options
+// MongoDB URI
 const MONGO_URI = process.env.MONGO_URI || "mongodb+srv://Adityachoudhary5:ADity%4020082006@cluster0.jkqvns1.mongodb.net/?retryWrites=true&w=majority";
 
-const client = new MongoClient(MONGO_URI, {
-  tls: true,
-  tlsAllowInvalidCertificates: true,
-  tlsAllowInvalidHostnames: true
+// Mongoose Connection (Handles Render SSL natively)
+mongoose.connect(MONGO_URI)
+  .then(() => console.log("✅ Connected successfully to MongoDB Atlas via Mongoose!"))
+  .catch(err => console.error("❌ MongoDB Connection Error:", err));
+
+// Schemas & Models
+const userSchema = new mongoose.Schema({
+  id: { type: Number, unique: true },
+  name: String,
+  balance: { type: Number, default: 0.00 },
+  totalReferrals: { type: Number, default: 0 },
+  lifeTimeEarned: { type: Number, default: 0.00 },
+  totalPurchases: { type: Number, default: 0 },
+  totalSpent: { type: Number, default: 0.00 },
+  customInput: { type: String, default: "0" },
+  lastSpinTime: { type: Number, default: 0 }
 });
-let db, usersCollection, shopCollection;
 
-async function connectDB() {
-  try {
-    if (!client.topology || !client.topology.isConnected()) {
-      await client.connect();
-    }
-    db = client.db("tatser_shop");
-    usersCollection = db.collection("users");
-    shopCollection = db.collection("shop_data");
-    console.log("✅ Connected successfully to MongoDB Atlas!");
-    await initializeDefaultShopData();
-  } catch (e) {
-    console.error("❌ MongoDB Connection Error:", e);
-  }
-}
-connectDB();
+const shopConfigSchema = new mongoose.Schema({
+  _id: { type: String, default: "config" },
+  products: { type: Object, default: {} },
+  maintenance: { type: Object, default: {} },
+  links: { type: Object, default: {} },
+  prices: { type: Object, default: {} },
+  stock: { type: Object, default: {} },
+  processedOrders: { type: Object, default: {} }
+});
 
-// Default Shop Data Structure
+const UserModel = mongoose.model('User', userSchema);
+const ShopModel = mongoose.model('ShopConfig', shopConfigSchema);
+
+// Default Shop Data
 const defaultShopData = {
   _id: "config",
   products: {
@@ -89,35 +97,23 @@ const defaultShopData = {
   processedOrders: {}
 };
 
-async function initializeDefaultShopData() {
-  if (!shopCollection) await connectDB();
-  const existing = await shopCollection.findOne({ _id: "config" });
-  if (!existing) {
-    await shopCollection.insertOne(defaultShopData);
-    console.log("✅ Default shop config inserted into MongoDB.");
-  }
-}
-
 async function getShopData() {
-  if (!shopCollection) await connectDB();
-  let data = await shopCollection.findOne({ _id: "config" });
+  let data = await ShopModel.findOne({ _id: "config" });
   if (!data) {
-    await initializeDefaultShopData();
-    data = await shopCollection.findOne({ _id: "config" });
+    data = await ShopModel.create(defaultShopData);
+    console.log("✅ Default shop config inserted into MongoDB.");
   }
   return data;
 }
 
-async function saveShopData(data) {
-  if (!shopCollection) await connectDB();
-  await shopCollection.updateOne({ _id: "config" }, { $set: data }, { upsert: true });
+async function saveShopData(shopDb) {
+  await ShopModel.updateOne({ _id: "config" }, { $set: shopDb.toObject ? shopDb.toObject() : shopDb }, { upsert: true });
 }
 
 async function getUser(userId, firstName) {
-  if (!usersCollection) await connectDB();
-  let user = await usersCollection.findOne({ id: userId });
+  let user = await UserModel.findOne({ id: userId });
   if (!user) {
-    user = {
+    user = await UserModel.create({
       id: userId,
       name: firstName || "User",
       balance: 0.00,
@@ -127,20 +123,17 @@ async function getUser(userId, firstName) {
       totalSpent: 0.00,
       customInput: "0",
       lastSpinTime: 0
-    };
-    await usersCollection.insertOne(user);
+    });
   }
   return user;
 }
 
 async function updateUser(user) {
-  if (!usersCollection) await connectDB();
-  await usersCollection.updateOne({ id: user.id }, { $set: user }, { upsert: true });
+  await UserModel.updateOne({ id: user.id }, { $set: user.toObject ? user.toObject() : user }, { upsert: true });
 }
 
 function getMainMenuMarkup(user) {
   const usdBal = (user.balance / 83).toFixed(2);
-  
   const welcomeText = 
 `🌸 - <b>TATSER PANEL SHOP</b> - 🌸
 
@@ -354,7 +347,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
       else if (text.startsWith('/addupdate')) {
         if (from.id !== ADMIN_ID) return;
         const updateMsg = text.replace('/addupdate', '').trim();
-        const allUsers = await usersCollection.find({}).toArray();
+        const allUsers = await UserModel.find({});
         for (const u of allUsers) {
           try {
             await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: u.id, text: `📢 <b>SHOP UPDATE</b>\n\n${updateMsg}`, parse_mode: "HTML" });
