@@ -15,10 +15,14 @@ const SUPPORT_CHANNEL = "https://t.me/adityachoudhary5";
 // MongoDB URI
 const MONGO_URI = process.env.MONGO_URI || "mongodb+srv://Adityachoudhary5:ADity%4020082006@cluster0.jkqvns1.mongodb.net/?retryWrites=true&w=majority";
 
-// Mongoose Connection (Handles Render SSL natively)
-mongoose.connect(MONGO_URI)
-  .then(() => console.log("✅ Connected successfully to MongoDB Atlas via Mongoose!"))
-  .catch(err => console.error("❌ MongoDB Connection Error:", err));
+// Mongoose Connection with explicit SSL/TLS options for Render
+mongoose.connect(MONGO_URI, {
+  tls: true,
+  tlsAllowInvalidCertificates: true,
+  tlsAllowInvalidHostnames: true
+})
+.then(() => console.log("✅ Connected successfully to MongoDB Atlas via Mongoose!"))
+.catch(err => console.error("❌ MongoDB Connection Error:", err));
 
 // Schemas & Models
 const userSchema = new mongoose.Schema({
