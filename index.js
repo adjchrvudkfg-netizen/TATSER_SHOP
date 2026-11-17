@@ -29,7 +29,7 @@ bot.start(async (ctx) => {
     const user = getUser(userId, ctx.from.first_name);
 
     const welcomeCaption = `
-🌸 – **VETLAM PANEL SHOP** – 🌸
+🌸 – **ADITYA PANEL SHOP** – 🌸
 
 🌺 Hello, \`${user.name}\` ⚡
 
@@ -48,11 +48,10 @@ Tap any button below to begin.
     `;
 
     const keyboard = Markup.inlineKeyboard([
-        [Markup.button.callback('🛍️ Shop', 'shop_menu'), Markup.button.callback('💳 Add Balance', 'add_balance')],
-        [Markup.button.callback('📦 My Orders', 'my_orders'), Markup.button.callback('👤 My Profile', 'my_profile')],
-        [Markup.button.callback('🔗 Referral', 'referral_menu'), Markup.button.callback('🎲 Daily Spin', 'daily_spin')],
-        [Markup.button.callback('🛠️ Support', 'support_menu')],
-        [Markup.button.callback('💎 Selling Proof', 'selling_proof'), Markup.button.callback('📊 Leaderboard', 'leaderboard')]
+        [Markup.button.callback('🛍️ Shop', 'shop_menu')],
+[Markup.button.callback('💳 Add Balance', 'add_balance'),Markup.button.callback('📦 My Orders', 'my_orders')],
+ Markup.button.callback('👤 My Profile', 'my_profile'),Markup.button.callback('🔗 Referral', 'referral_menu')], 
+[Markup.button.callback('🎲 Daily Spin', 'daily_spin'),Markup.button.callback('🛠️ Support', 'support_menu')],
     ]);
 
     try {
