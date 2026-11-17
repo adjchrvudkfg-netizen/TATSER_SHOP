@@ -1,21 +1,14 @@
 {
-  "name": "telegram-shop-bot",
+  "name": "tatser-shop",
   "version": "1.0.0",
-  "description": "Telegram E-commerce & Digital Panel Shop Bot",
+  "description": "Telegram Shop Bot",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
-  "keywords": [
-    "telegram",
-    "bot",
-    "shop",
-    "telegraf"
-  ],
-  "author": "Aditya",
-  "license": "MIT",
   "dependencies": {
-    "dotenv": "^16.4.5",
-    "telegraf": "^4.16.3"
+    "axios": "^1.6.0",
+    "express": "^4.19.2",
+    "mongoose": "^8.3.0"
   }
 }
