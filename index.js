@@ -3,7 +3,7 @@ const config = require('./config');
 
 const bot = new Telegraf(config.BOT_TOKEN);
 
-// In-memory database simulation (Aap ise MongoDB ya PostgreSQL se replace kar sakte hain)
+// In-memory database simulation for users
 const users = {};
 
 // Helper function to get or create user profile
@@ -12,24 +12,41 @@ function getUser(userId, username = "User") {
         users[userId] = {
             id: userId,
             name: username,
-            balance: 15.00, // Default starting balance (Jaise screenshot mein hai)
+            balance: 15.00,
             totalOrders: 3,
             totalSpent: 195.00,
             referrals: 0,
-            joinedDate: new Date().toISOString().split('T')[0],
-            lastSpin: null
+            joinedDate: "2026-10-23 21:23:31",
+            ordersList: [
+                { name: "PHANTOM Android+ IOS", count: 7, spent: 316 },
+                { name: "AIM HACK", count: 1, spent: 65 },
+                { name: "DRIP CLIENT APK MOD", count: 1, spent: 30 }
+            ]
         };
     }
     return users[userId];
 }
 
-// /start Command Handler
+// /start Command Handler (with referral tracking support)
 bot.start(async (ctx) => {
     const userId = ctx.from.id;
     const user = getUser(userId, ctx.from.first_name);
 
+    // Check for referral parameter e.g., /start ref_8805135936
+    const payload = ctx.startPayload;
+    if (payload && payload.startsWith('ref_')) {
+        const referrerId = parseInt(payload.replace('ref_', ''));
+        if (referrerId && referrerId !== userId && users[referrerId]) {
+            // Check if user is new (joined today or just created)
+            if (!user.referredBy) {
+                user.referredBy = referrerId;
+                users[referrerId].referrals += 1;
+            }
+        }
+    }
+
     const welcomeCaption = `
-🌸 – **ADITYA PANEL SHOP** – 🌸
+🌸 – **TATSER SHOP** – 🌸
 
 🌺 Hello, \`${user.name}\` ⚡
 
@@ -47,11 +64,12 @@ Tap any button below to begin.
 💰 **Wallet Balance:** ${config.CURRENCY_SYMBOL}${user.balance.toFixed(2)} (~$${(user.balance / 85).toFixed(2)})
     `;
 
+    // Updated Keyboard without Proof and Leaderboard
     const keyboard = Markup.inlineKeyboard([
-        [Markup.button.callback('🛍️ Shop', 'shop_menu')],
-[Markup.button.callback('💳 Add Balance', 'add_balance'),Markup.button.callback('📦 My Orders', 'my_orders')],
- Markup.button.callback('👤 My Profile', 'my_profile'),Markup.button.callback('🔗 Referral', 'referral_menu')], 
-[Markup.button.callback('🎲 Daily Spin', 'daily_spin'),Markup.button.callback('🛠️ Support', 'support_menu')],
+        [Markup.button.callback('🛍️ Shop', 'shop_menu'), Markup.button.callback('💳 Add Balance', 'add_balance')],
+        [Markup.button.callback('📦 My Orders', 'my_orders'), Markup.button.callback('👤 My Profile', 'my_profile')],
+        [Markup.button.callback('🔗 Referral', 'referral_menu'), Markup.button.callback('🎲 Daily Spin', 'daily_spin')],
+        [Markup.button.callback('🛠️ Support', 'support_menu')]
     ]);
 
     try {
@@ -61,7 +79,6 @@ Tap any button below to begin.
             ...keyboard
         });
     } catch (e) {
-        // Fallback agar photo load na ho
         await ctx.reply(welcomeCaption, { parse_mode: 'Markdown', ...keyboard });
     }
 });
@@ -77,13 +94,12 @@ bot.action('shop_menu', async (ctx) => {
         [Markup.button.callback('🔙 BACK', 'back_to_home')]
     ]);
 
-    await ctx.editMessageCaption('🛒 **SELECT PRODUCT PANEL**\n\nChoose a panel to view its packages:', {
-        parse_mode: 'Markdown',
-        ...keyboard
-    }).catch(() => ctx.editMessageText('🛒 **SELECT PRODUCT PANEL**\n\nChoose a panel to view its packages:', { parse_mode: 'Markdown', ...keyboard }));
+    const text = '🛒 **SELECT PRODUCT PANEL**\n\nChoose a panel to view its packages:';
+    await ctx.editMessageCaption(text, { parse_mode: 'Markdown', ...keyboard })
+        .catch(() => ctx.editMessageText(text, { parse_mode: 'Markdown', ...keyboard }));
 });
 
-// My Profile Handler
+// My Profile Handler (Customized as requested in image 7132_2.png)
 bot.action('my_profile', async (ctx) => {
     await ctx.answerCbQuery();
     const user = getUser(ctx.from.id, ctx.from.first_name);
@@ -93,7 +109,7 @@ bot.action('my_profile', async (ctx) => {
 
 💂 **Grid ID:** \`${user.id}\`
 👑 **Name:** ${user.name}
-👔 **Account Level:** 👤 Regular User
+💼 **Account Level:** 👤 Regular User
 
 💰 – **Wallet** – 🍀
 🍀 **Current Balance:** ${config.CURRENCY_SYMBOL}${user.balance.toFixed(2)} (~$${(user.balance / 85).toFixed(2)}) 🍀
@@ -115,6 +131,89 @@ bot.action('my_profile', async (ctx) => {
         .catch(() => ctx.editMessageText(profileText, { parse_mode: 'Markdown', ...keyboard }));
 });
 
+// My Orders Handler (Customized as requested in image 7129_2.png)
+bot.action('my_orders', async (ctx) => {
+    await ctx.answerCbQuery();
+    const user = getUser(ctx.from.id, ctx.from.first_name);
+
+    let totalPurchasesCount = user.ordersList.reduce((acc, item) => acc + item.count, 0);
+    let totalSpentAmount = user.ordersList.reduce((acc, item) => acc + item.spent, 0);
+
+    const orderText = `
+📅 **MY ORDERS**
+
+🛒 **Total Purchases:** ${totalPurchasesCount}
+💰 **Total Spent:** ${config.CURRENCY_SYMBOL}${totalSpentAmount}
+
+👉 **Product select karo**
+    `;
+
+    let orderButtons = [
+        [Markup.button.callback('📋 All Orders', 'all_orders')]
+    ];
+
+    user.ordersList.forEach(order => {
+        orderButtons.push([Markup.button.callback(`💀 ${order.name} • ${order.count} Purchases • ₹${order.spent}`, 'dummy_action')]);
+    });
+
+    orderButtons.push([Markup.button.callback('🔙 Back', 'back_to_home')]);
+
+    const keyboard = Markup.inlineKeyboard(orderButtons);
+
+    await ctx.editMessageCaption(orderText, { parse_mode: 'Markdown', ...keyboard })
+        .catch(() => ctx.editMessageText(orderText, { parse_mode: 'Markdown', ...keyboard }));
+});
+
+// Referral / Affiliate Program Handler (Customized with TATSER_SHOP link as requested)
+bot.action('referral_menu', async (ctx) => {
+    await ctx.answerCbQuery();
+    const user = getUser(ctx.from.id);
+    const botUsername = "TATSER_SHOP"; // Aapka bot username
+
+    const refText = `
+👥 **AFFILIATE PROGRAM** 👥
+
+✅ **Status:** ACTIVE
+💰 **Earn 15% flat commission on every successful purchase made by your referred friends!**
+
+📊 **YOUR STATS:**
+👥 **Total Invited:** ${user.referrals}
+💵 **Life-time Earned:** ${config.CURRENCY_SYMBOL}0.00 (~$0.00)
+
+🔗 **Your Invite Link:**
+\`https://t.me/${botUsername}?start=ref_${user.id}\`
+
+Simply copy and share this link to start earning!
+    `;
+
+    const keyboard = Markup.inlineKeyboard([
+        [Markup.button.callback('🔙 BACK', 'back_to_home')]
+    ]);
+
+    await ctx.editMessageCaption(refText, { parse_mode: 'Markdown', ...keyboard })
+        .catch(() => ctx.editMessageText(refText, { parse_mode: 'Markdown', ...keyboard }));
+});
+
+// Support Menu Handler (Customized as requested in image 7137_2.png)
+bot.action('support_menu', async (ctx) => {
+    await ctx.answerCbQuery();
+    const supportText = `
+✈️🟢 **– PREMIUM SUPPORT CENTER –**
+
+Contact us via Telegram or WhatsApp for instant help, or open a support ticket for admin assistance.
+    `;
+
+    const keyboard = Markup.inlineKeyboard([
+        [Markup.button.url('✈️ Contact on Telegram', config.SUPPORT_LINK)],
+        [Markup.button.url('🟢 Contact on WhatsApp', config.WHATSAPP_SUPPORT)],
+        [Markup.button.callback('🎟️ Open New Ticket', 'open_ticket'), Markup.button.callback('📋 My Open Tickets', 'my_tickets')],
+        [Markup.button.callback('🔙 BACK', 'back_to_home')]
+    ]);
+
+    await ctx.editMessageCaption(supportText, { parse_mode: 'Markdown', ...keyboard })
+        .catch(() => ctx.editMessageText(supportText, { parse_mode: 'Markdown', ...keyboard }));
+});
+
 // Add Balance / QR Payment Handler
 bot.action('add_balance', async (ctx) => {
     await ctx.answerCbQuery();
@@ -134,7 +233,6 @@ bot.action('add_balance', async (ctx) => {
         [Markup.button.callback('🔙 Cancel / Back', 'back_to_home')]
     ]);
 
-    // Send QR Code image simulation
     await ctx.replyWithPhoto('https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=upi://pay?pa=merchant@paytm&am=158', {
         caption: qrCaption,
         parse_mode: 'Markdown',
@@ -142,7 +240,7 @@ bot.action('add_balance', async (ctx) => {
     });
 });
 
-// Daily Spin / Lucky Dice Handler
+// Daily Spin Handler
 bot.action('daily_spin', async (ctx) => {
     await ctx.answerCbQuery();
     
@@ -166,12 +264,11 @@ bot.action('trigger_dice', async (ctx) => {
     await ctx.answerCbQuery();
     await ctx.deleteMessage().catch(() => {});
     
-    // Send Telegram built-in dice emoji animation
     const diceMessage = await ctx.replyWithDice({ emoji: '🎲' });
-    const diceValue = diceMessage.dice.value; // Value between 1 to 6
+    const diceValue = diceMessage.dice.value;
 
     const user = getUser(ctx.from.id, ctx.from.first_name);
-    const reward = diceValue * 0.20; // Calculate reward based on dice number
+    const reward = diceValue * 0.20;
     user.balance += reward;
 
     setTimeout(async () => {
@@ -189,63 +286,13 @@ Congratulations! Come back after 24 hours.
     }, 3000);
 });
 
-// Referral Menu Handler
-bot.action('referral_menu', async (ctx) => {
-    await ctx.answerCbQuery();
-    const user = getUser(ctx.from.id);
-    const botInfo = await bot.telegram.getMe();
-
-    const refText = `
-👥 **AFFILIATE PROGRAM** 👥
-
-✅ **Status:** ACTIVE
-💰 **Earn 15% flat commission on every successful purchase made by your referred friends!**
-
-📊 **YOUR STATS:**
-👥 **Total Invited:** ${user.referrals}
-💵 **Life-time Earned:** ${config.CURRENCY_SYMBOL}0.00 (~$0.00)
-
-🔗 **Your Invite Link:**
-\`https://t.me/${botInfo.username}?start=ref_${user.id}\`
-
-Simply copy and share this link to start earning!
-    `;
-
-    const keyboard = Markup.inlineKeyboard([
-        [Markup.button.callback('🔙 BACK', 'back_to_home')]
-    ]);
-
-    await ctx.editMessageCaption(refText, { parse_mode: 'Markdown', ...keyboard })
-        .catch(() => ctx.editMessageText(refText, { parse_mode: 'Markdown', ...keyboard }));
-});
-
-// Support Menu
-bot.action('support_menu', async (ctx) => {
-    await ctx.answerCbQuery();
-    const supportText = `
-✈️📱 **– PREMIUM SUPPORT CENTER –**
-
-Contact us via Telegram or WhatsApp for instant help, or open a support ticket for admin assistance.
-    `;
-
-    const keyboard = Markup.inlineKeyboard([
-        [Markup.button.url('✈️ Contact on Telegram', config.SUPPORT_LINK)],
-        [Markup.button.url('🟢 Contact on WhatsApp', config.WHATSAPP_SUPPORT)],
-        [Markup.button.callback('🎟️ Open New Ticket', 'open_ticket'), Markup.button.callback('📋 My Open Tickets', 'my_tickets')],
-        [Markup.button.callback('🔙 BACK', 'back_to_home')]
-    ]);
-
-    await ctx.editMessageCaption(supportText, { parse_mode: 'Markdown', ...keyboard })
-        .catch(() => ctx.editMessageText(supportText, { parse_mode: 'Markdown', ...keyboard }));
-});
-
 // Back to Home Button
 bot.action('back_to_home', async (ctx) => {
     await ctx.answerCbQuery();
     const user = getUser(ctx.from.id, ctx.from.first_name);
 
     const welcomeCaption = `
-🌸 – **VETLAM PANEL SHOP** – 🌸
+🌸 – **TATSER SHOP** – 🌸
 
 🌺 Hello, \`${user.name}\` ⚡
 
@@ -260,24 +307,22 @@ Tap any button below to begin.
         [Markup.button.callback('🛍️ Shop', 'shop_menu'), Markup.button.callback('💳 Add Balance', 'add_balance')],
         [Markup.button.callback('📦 My Orders', 'my_orders'), Markup.button.callback('👤 My Profile', 'my_profile')],
         [Markup.button.callback('🔗 Referral', 'referral_menu'), Markup.button.callback('🎲 Daily Spin', 'daily_spin')],
-        [Markup.button.callback('🛠️ Support', 'support_menu')],
-        [Markup.button.callback('💎 Selling Proof', 'selling_proof'), Markup.button.callback('📊 Leaderboard', 'leaderboard')]
+        [Markup.button.callback('🛠️ Support', 'support_menu')]
     ]);
 
     await ctx.editMessageCaption(welcomeCaption, { parse_mode: 'Markdown', ...keyboard })
         .catch(() => ctx.editMessageText(welcomeCaption, { parse_mode: 'Markdown', ...keyboard }));
 });
 
-// Dummy Placeholders for remaining buttons
-bot.action(['my_orders', 'selling_proof', 'leaderboard', 'redeem_promo', 'open_ticket', 'my_tickets', 'cat_android_nonroot', 'cat_android_root', 'cat_iphone', 'cat_pc'], async (ctx) => {
+// Dummy Placeholder for actions under development
+bot.action(['dummy_action', 'all_orders', 'redeem_promo', 'open_ticket', 'my_tickets', 'cat_android_nonroot', 'cat_android_root', 'cat_iphone', 'cat_pc'], async (ctx) => {
     await ctx.answerCbQuery("Feature coming soon or under maintenance!", { show_alert: true });
 });
 
-// Start the Bot
+// Start Bot
 bot.launch().then(() => {
-    console.log("🤖 Bot is successfully running!");
+    console.log("🤖 TATSER SHOP Bot is successfully running!");
 });
 
-// Enable graceful stop
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
