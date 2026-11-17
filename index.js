@@ -118,7 +118,7 @@ function getUser(userId, firstName) {
 
 function getMainMenuMarkup(user) {
   const usdBal = (user.balance / config.CURRENCY_RATE).toFixed(2);
-  
+
   const welcomeText = 
 `🌸 - <b>TATSER PANEL SHOP</b> - 🌸
 
@@ -151,7 +151,8 @@ function getMainMenuMarkup(user) {
   return { resText: welcomeText, reply_markup };
 }
 
-app.post(`/webhook/${TOKEN}`, async (req, res) => {
+// 🟢 Simplified Webhook Route (Fixed 404 Error)
+app.post('/webhook', async (req, res) => {
   res.sendStatus(200);
   const update = req.body;
 
@@ -297,10 +298,10 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
         const parts = text.split(" ");
         if (parts.length < 2) return;
         const productKey = parts[1].toLowerCase();
-        
+
         shopDb.maintenance[productKey] = !shopDb.maintenance[productKey];
         saveData();
-        
+
         await axios.post(`${TELEGRAM_API}/sendMessage`, { 
           chat_id: chatId, 
           text: `🔧 Maintenance status for <b>${productKey}</b> is now: <b>${shopDb.maintenance[productKey]}</b>`, 
@@ -356,7 +357,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
       else if (data === "shop") {
         await deletePrevMessage();
         const shopText = `🛒 <b>APNA PRODUCT CHUNLO!</b>\n\nSelect your panel below:`;
-        
+
         const shopButtons = [];
         for (const key in shopDb.products) {
           shopButtons.push([{ text: shopDb.products[key], callback_data: `panel_${key}` }]);
@@ -390,12 +391,12 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
 
         let panelText = `⚡ <b>${panelName}</b>\n\n`;
         const pLinks = shopDb.links && shopDb.links[panelKey] ? shopDb.links[panelKey] : { apk: "", demo: "" };
-        
+
         if (pLinks.apk) {
           panelText += `📦 <b>APK LINK</b> 🔗\n<a href="${pLinks.apk}">👉 Click Here to Download APK</a>\n\n`;
         }
         panelText += `Select Duration:`;
-        
+
         if (!shopDb.stock[panelKey]) shopDb.stock[panelKey] = { "1h": [], "3h": [], "6h": [] };
         if (!shopDb.prices[panelKey]) shopDb.prices[panelKey] = {};
 
@@ -405,7 +406,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
         for (const dur in panelPrices) {
           const price = panelPrices[dur];
           const stockCount = shopDb.stock[panelKey] && shopDb.stock[panelKey][dur] ? shopDb.stock[panelKey][dur].length : 0;
-          
+
           if (stockCount > 0) {
             durationButtons.push([{ text: `⏳ ${dur.toUpperCase()} - ₹${price}`, callback_data: `buy_${panelKey}_${dur}_${price}` }]);
           } else {
@@ -643,7 +644,7 @@ app.post(`/webhook/${TOKEN}`, async (req, res) => {
         const parts = data.split("_");
         if (shopDb.processedOrders[parts[6]]) return;
         shopDb.processedOrders[parts[6]] = true;
-        
+
         const targetUserId = parts[2];
         const panel = parts[3];
         const duration = parts[4];
@@ -746,7 +747,7 @@ app.listen(PORT, async () => {
   const renderUrl = process.env.RENDER_EXTERNAL_URL;
   if (renderUrl) {
     try {
-      await axios.get(`${TELEGRAM_API}/setWebhook?url=${renderUrl}/webhook/${TOKEN}`);
+      await axios.get(`${TELEGRAM_API}/setWebhook?url=${renderUrl}/webhook`);
       console.log(`Webhook set successfully!`);
     } catch (e) {}
   }
