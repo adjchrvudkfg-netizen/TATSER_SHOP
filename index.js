@@ -9,11 +9,12 @@ app.use(express.json());
 
 const TOKEN = config.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_API = `https://api.telegram.org/bot${TOKEN}`;
-const ADMIN_ID = 8805135936; 
+const ADMIN_ID = 8805135936;
 const UPI_ID = "9694421148@fam";
 const SUPPORT_CHANNEL = "https://t.me/adityachoudhary5";
+const CURRENCY_RATE = config.CURRENCY_RATE || 84;
 
-// Permanent storage file path
+// Local JSON file storage path (no MongoDB)
 const dbFilePath = path.join(__dirname, 'shop_db.json');
 
 // Default Database Structure
@@ -80,7 +81,7 @@ try {
       if (parsed.stock) shopDb.stock = { ...shopDb.stock, ...parsed.stock };
       if (parsed.users) shopDb.users = parsed.users;
       if (parsed.processedOrders) shopDb.processedOrders = parsed.processedOrders;
-      console.log("✅ Database loaded successfully from file!");
+      console.log("✅ Database loaded successfully from shop_db.json!");
     }
   } else {
     saveData();
@@ -117,9 +118,9 @@ function getUser(userId, firstName) {
 }
 
 function getMainMenuMarkup(user) {
-  const usdBal = (user.balance / config.CURRENCY_RATE).toFixed(2);
+  const usdBal = (user.balance / CURRENCY_RATE).toFixed(2);
 
-  const welcomeText = 
+  const welcomeText =
 `🌸 - <b>TATSER PANEL SHOP</b> - 🌸
 
 👤 Hello, <code>${user.name}</code> !
@@ -151,7 +152,62 @@ function getMainMenuMarkup(user) {
   return { resText: welcomeText, reply_markup };
 }
 
-// 🟢 Simplified Webhook Route (Fixed 404 Error)
+function buildKeypadText(user) {
+  const numVal = parseFloat(user.customInput) || 0;
+  const usdVal = (numVal / CURRENCY_RATE).toFixed(2);
+  return (
+`🏦 <b>Custom Amount</b>
+
+──────────────────────
+Method: 🟢 <b>UPI (FamPay / Direct)</b>
+Min: ₹1 | Max: ₹5,000
+──────────────────────
+
+Apna amount enter karo aur payment complete karke balance add karwao.
+
+🔻 <b>Amount:</b> ₹${user.customInput} (~$${usdVal})
+
+<i>Amount type karo — buttons se:</i>`
+  );
+}
+
+const KEYPAD_MARKUP = {
+  inline_keyboard: [
+    [{ text: "💰 1", callback_data: "num_1" }, { text: "💰 2", callback_data: "num_2" }, { text: "💰 3", callback_data: "num_3" }],
+    [{ text: "💰 4", callback_data: "num_4" }, { text: "💰 5", callback_data: "num_5" }, { text: "💰 6", callback_data: "num_6" }],
+    [{ text: "💰 7", callback_data: "num_7" }, { text: "💰 8", callback_data: "num_8" }, { text: "💰 9", callback_data: "num_9" }],
+    [{ text: "❌ Delete", callback_data: "num_del" }, { text: "💰 0", callback_data: "num_0" }, { text: "✅ Confirm", callback_data: "num_confirm" }],
+    [{ text: "🔙 Back", callback_data: "main_menu" }]
+  ]
+};
+
+async function sendKeypadMenu(chatId, user) {
+  await axios.post(`${TELEGRAM_API}/sendMessage`, {
+    chat_id: chatId,
+    text: buildKeypadText(user),
+    parse_mode: "HTML",
+    reply_markup: KEYPAD_MARKUP
+  });
+}
+
+async function updateKeypadMenu(chatId, messageId, user) {
+  try {
+    await axios.post(`${TELEGRAM_API}/editMessageText`, {
+      chat_id: chatId,
+      message_id: messageId,
+      text: buildKeypadText(user),
+      parse_mode: "HTML",
+      reply_markup: KEYPAD_MARKUP
+    });
+  } catch (e) {}
+}
+
+// Health check route
+app.get('/', (req, res) => {
+  res.status(200).send('Bot server is running.');
+});
+
+// Telegram Webhook Route
 app.post('/webhook', async (req, res) => {
   res.sendStatus(200);
   const update = req.body;
@@ -176,7 +232,11 @@ app.post('/webhook', async (req, res) => {
         if (from.id !== ADMIN_ID) return;
         const parts = text.split(" ");
         if (parts.length < 4) {
-          await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text: "⚠️ Use: <code>/setlinks panel apk_url demo_url</code>", parse_mode: "HTML" });
+          await axios.post(`${TELEGRAM_API}/sendMessage`, {
+            chat_id: chatId,
+            text: "⚠️ Use: <code>/setlinks panel apk_url demo_url</code>",
+            parse_mode: "HTML"
+          });
           return;
         }
         const panel = parts[1].toLowerCase();
@@ -187,7 +247,11 @@ app.post('/webhook', async (req, res) => {
         shopDb.links[panel] = { apk: apkUrl, demo: demoUrl };
         saveData();
 
-        await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text: `✅ Links updated successfully for <b>${panel.toUpperCase()}</b>!`, parse_mode: "HTML" });
+        await axios.post(`${TELEGRAM_API}/sendMessage`, {
+          chat_id: chatId,
+          text: `✅ Links updated successfully for <b>${panel.toUpperCase()}</b>!`,
+          parse_mode: "HTML"
+        });
       }
       else if (text.startsWith('/addproduct')) {
         if (from.id !== ADMIN_ID) return;
@@ -221,7 +285,11 @@ app.post('/webhook', async (req, res) => {
         delete shopDb.links[productKey];
         saveData();
 
-        await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text: `🗑️ Product <code>${productKey}</code> removed successfully!`, parse_mode: "HTML" });
+        await axios.post(`${TELEGRAM_API}/sendMessage`, {
+          chat_id: chatId,
+          text: `🗑️ Product <code>${productKey}</code> removed successfully!`,
+          parse_mode: "HTML"
+        });
       }
       else if (text.startsWith('/addbulk')) {
         if (from.id !== ADMIN_ID) return;
@@ -286,12 +354,16 @@ app.post('/webhook', async (req, res) => {
         if (parts.length < 4) return;
         const panel = parts[1].toLowerCase();
         const duration = parts[2].toLowerCase();
-        const price = parseInt(parts[3]);
+        const price = parseInt(parts[3], 10);
+        if (Number.isNaN(price) || price <= 0) return;
 
         if (!shopDb.prices[panel]) shopDb.prices[panel] = {};
         shopDb.prices[panel][duration] = price;
         saveData();
-        await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text: `✅ Price updated for ${panel} (${duration}) to ₹${price}` });
+        await axios.post(`${TELEGRAM_API}/sendMessage`, {
+          chat_id: chatId,
+          text: `✅ Price updated for ${panel} (${duration}) to ₹${price}`
+        });
       }
       else if (text.startsWith('/maintenance')) {
         if (from.id !== ADMIN_ID) return;
@@ -302,10 +374,10 @@ app.post('/webhook', async (req, res) => {
         shopDb.maintenance[productKey] = !shopDb.maintenance[productKey];
         saveData();
 
-        await axios.post(`${TELEGRAM_API}/sendMessage`, { 
-          chat_id: chatId, 
-          text: `🔧 Maintenance status for <b>${productKey}</b> is now: <b>${shopDb.maintenance[productKey]}</b>`, 
-          parse_mode: "HTML" 
+        await axios.post(`${TELEGRAM_API}/sendMessage`, {
+          chat_id: chatId,
+          text: `🔧 Maintenance status for <b>${productKey}</b> is now: <b>${shopDb.maintenance[productKey]}</b>`,
+          parse_mode: "HTML"
         });
       }
       else if (text.startsWith('/addupdate')) {
@@ -313,7 +385,11 @@ app.post('/webhook', async (req, res) => {
         const updateMsg = text.replace('/addupdate', '').trim();
         for (const uid in shopDb.users) {
           try {
-            await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: uid, text: `📢 <b>SHOP UPDATE</b>\n\n${updateMsg}`, parse_mode: "HTML" });
+            await axios.post(`${TELEGRAM_API}/sendMessage`, {
+              chat_id: uid,
+              text: `📢 <b>SHOP UPDATE</b>\n\n${updateMsg}`,
+              parse_mode: "HTML"
+            });
           } catch (e) {}
         }
         await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text: "✅ Broadcast sent!" });
@@ -329,7 +405,7 @@ app.post('/webhook', async (req, res) => {
         }
         await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text: stockText, parse_mode: "HTML" });
       }
-    } 
+    }
     else if (update.callback_query) {
       const cq = update.callback_query;
       const chatId = cq.message.chat.id;
@@ -364,11 +440,11 @@ app.post('/webhook', async (req, res) => {
         }
         shopButtons.push([{ text: "🔙 Main Menu", callback_data: "main_menu" }]);
 
-        await axios.post(`${TELEGRAM_API}/sendMessage`, { 
-          chat_id: chatId, 
-          text: shopText, 
-          parse_mode: "HTML", 
-          reply_markup: { inline_keyboard: shopButtons } 
+        await axios.post(`${TELEGRAM_API}/sendMessage`, {
+          chat_id: chatId,
+          text: shopText,
+          parse_mode: "HTML",
+          reply_markup: { inline_keyboard: shopButtons }
         });
       }
       else if (data.startsWith("panel_")) {
@@ -385,7 +461,12 @@ app.post('/webhook', async (req, res) => {
               [{ text: "🛍️ Back", callback_data: "shop" }]
             ]
           };
-          await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text: maintText, parse_mode: "HTML", reply_markup: maintMarkup });
+          await axios.post(`${TELEGRAM_API}/sendMessage`, {
+            chat_id: chatId,
+            text: maintText,
+            parse_mode: "HTML",
+            reply_markup: maintMarkup
+          });
           return;
         }
 
@@ -421,22 +502,40 @@ app.post('/webhook', async (req, res) => {
         durationButtons.push([{ text: "🔙 Back to Shop", callback_data: "shop" }]);
 
         const markup = { inline_keyboard: durationButtons };
-        await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text: panelText, parse_mode: "HTML", reply_markup: markup, disable_web_page_preview: true });
+        await axios.post(`${TELEGRAM_API}/sendMessage`, {
+          chat_id: chatId,
+          text: panelText,
+          parse_mode: "HTML",
+          reply_markup: markup,
+          disable_web_page_preview: true
+        });
       }
       else if (data.startsWith("notify_")) {
-        await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, { callback_query_id: cq.id, text: "🔔 Notification set!", show_alert: true });
+        await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, {
+          callback_query_id: cq.id,
+          text: "🔔 Notification set!",
+          show_alert: true
+        });
       }
       else if (data === "nostock") {
-        await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, { callback_query_id: cq.id, text: "❌ Yeh package out of stock hai!", show_alert: true });
+        await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, {
+          callback_query_id: cq.id,
+          text: "❌ Yeh package out of stock hai!",
+          show_alert: true
+        });
       }
       else if (data.startsWith("buy_")) {
         const parts = data.split("_");
         const panel = parts[1];
         const duration = parts[2];
-        const price = parseInt(parts[3]);
+        const price = parseInt(parts[3], 10);
 
         if (!shopDb.stock[panel] || !shopDb.stock[panel][duration] || shopDb.stock[panel][duration].length === 0) {
-          await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, { callback_query_id: cq.id, text: "❌ Out of Stock!", show_alert: true });
+          await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, {
+            callback_query_id: cq.id,
+            text: "❌ Out of Stock!",
+            show_alert: true
+          });
           return;
         }
 
@@ -458,7 +557,8 @@ app.post('/webhook', async (req, res) => {
         } else {
           await deletePrevMessage();
           const orderId = Math.floor(100000 + Math.random() * 900000);
-          const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=upi://pay?pa=${UPI_ID}&pn=TATSER%20SHOP&am=${price}&cu=INR&tn=Order_${orderId}`;
+          const upiUri = encodeURIComponent(`upi://pay?pa=${UPI_ID}&pn=TATSER%20SHOP&am=${price}&cu=INR&tn=Order_${orderId}`);
+          const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${upiUri}`;
 
           await axios.post(`${TELEGRAM_API}/sendPhoto`, {
             chat_id: chatId,
@@ -477,28 +577,41 @@ app.post('/webhook', async (req, res) => {
       else if (data === "add_balance") {
         await deletePrevMessage();
         user.customInput = "0";
+        saveData();
         await sendKeypadMenu(chatId, user);
       }
       else if (data.startsWith("num_") && data !== "num_del" && data !== "num_confirm") {
         const digit = data.replace("num_", "");
-        user.customInput = (user.customInput === "0") ? digit : user.customInput + digit;
+        if (user.customInput.length < 6) {
+          user.customInput = (user.customInput === "0") ? digit : user.customInput + digit;
+          saveData();
+        }
         await updateKeypadMenu(chatId, messageId, user);
       }
       else if (data === "num_del") {
         user.customInput = (user.customInput.length > 1) ? user.customInput.slice(0, -1) : "0";
+        saveData();
         await updateKeypadMenu(chatId, messageId, user);
       }
       else if (data === "num_confirm") {
-        const amt = parseInt(user.customInput);
-        if (!amt || amt <= 0) return;
+        const amt = parseInt(user.customInput, 10);
+        if (!amt || amt < 1 || amt > 5000) {
+          await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, {
+            callback_query_id: cq.id,
+            text: "⚠️ Amount ₹1 se ₹5,000 ke beech hona chahiye!",
+            show_alert: true
+          });
+          return;
+        }
         await deletePrevMessage();
         const orderId = Math.floor(100000 + Math.random() * 900000);
-        const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=upi://pay?pa=${UPI_ID}&pn=TATSER%20SHOP&am=${amt}&cu=INR&tn=Deposit_${orderId}`;
+        const upiUri = encodeURIComponent(`upi://pay?pa=${UPI_ID}&pn=TATSER%20SHOP&am=${amt}&cu=INR&tn=Deposit_${orderId}`);
+        const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${upiUri}`;
 
         await axios.post(`${TELEGRAM_API}/sendPhoto`, {
           chat_id: chatId,
           photo: qrUrl,
-          caption: `💳 <b>ADD BALANCE QR</b>\nAmount: ₹${amt}\n🆔 Order ID: <code>${orderId}</code>`,
+          caption: `💳 <b>ADD BALANCE QR</b>\nAmount: ₹${amt}\n🆔 Order ID: <code>${orderId}</code>\n📌 UPI ID: <code>${UPI_ID}</code>`,
           parse_mode: "HTML",
           reply_markup: {
             inline_keyboard: [
@@ -511,7 +624,7 @@ app.post('/webhook', async (req, res) => {
       else if (data === "referral") {
         await deletePrevMessage();
         const inviteLink = `https://t.me/T4TSAR_NEW_SHOP_BOT?start=ref_${user.id}`;
-        const refText = 
+        const refText =
 `💎 <b>TATSER AFFILIATE PROGRAM</b> 💎
 
 ✨ <i>Invite your friends and earn rewards instantly when they join and shop!</i>
@@ -524,35 +637,35 @@ app.post('/webhook', async (req, res) => {
 
 <i>Share this link in groups & friends to start earning!</i> 🚀`;
 
-        await axios.post(`${TELEGRAM_API}/sendMessage`, { 
-          chat_id: chatId, 
-          text: refText, 
-          parse_mode: "HTML", 
-          reply_markup: { 
+        await axios.post(`${TELEGRAM_API}/sendMessage`, {
+          chat_id: chatId,
+          text: refText,
+          parse_mode: "HTML",
+          reply_markup: {
             inline_keyboard: [
               [{ text: "📤 Share Invite Link", url: `https://t.me/share/url?url=${encodeURIComponent(inviteLink)}&text=${encodeURIComponent("🔥 Join TATSER SHOP for premium digital keys & instant delivery!")}` }],
               [{ text: "🔙 Main Menu", callback_data: "main_menu" }]
-            ] 
-          } 
+            ]
+          }
         });
       }
       else if (data === "support") {
         await deletePrevMessage();
-        await axios.post(`${TELEGRAM_API}/sendMessage`, { 
-          chat_id: chatId, 
-          text: `🤖 <b>TATSER 24/7 SUPPORT CENTER</b>\n\nNeed help with payments, keys, or orders? Click below to chat directly with admin support!`, 
-          parse_mode: "HTML", 
-          reply_markup: { 
+        await axios.post(`${TELEGRAM_API}/sendMessage`, {
+          chat_id: chatId,
+          text: `🤖 <b>TATSER 24/7 SUPPORT CENTER</b>\n\nNeed help with payments, keys, or orders? Click below to chat directly with admin support!`,
+          parse_mode: "HTML",
+          reply_markup: {
             inline_keyboard: [
               [{ text: "💬 Chat with Support", url: SUPPORT_CHANNEL }],
               [{ text: "🔙 Main Menu", callback_data: "main_menu" }]
-            ] 
-          } 
+            ]
+          }
         });
       }
       else if (data === "profile") {
         await deletePrevMessage();
-        const profileText = 
+        const profileText =
 `👤 <b>USER ACCOUNT PROFILE</b> 👤
 
 ──────────────────────
@@ -567,31 +680,35 @@ app.post('/webhook', async (req, res) => {
 
 ✨ <i>Thank you for using TATSER SHOP!</i>`;
 
-        await axios.post(`${TELEGRAM_API}/sendMessage`, { 
-          chat_id: chatId, 
-          text: profileText, 
-          parse_mode: "HTML", 
-          reply_markup: { 
+        await axios.post(`${TELEGRAM_API}/sendMessage`, {
+          chat_id: chatId,
+          text: profileText,
+          parse_mode: "HTML",
+          reply_markup: {
             inline_keyboard: [
               [{ text: "💳 Add Balance", callback_data: "add_balance" }, { text: "📦 My Orders", callback_data: "my_orders" }],
               [{ text: "🔙 Main Menu", callback_data: "main_menu" }]
-            ] 
-          } 
+            ]
+          }
         });
       }
       else if (data === "my_orders") {
         await deletePrevMessage();
-        await axios.post(`${TELEGRAM_API}/sendMessage`, { 
-          chat_id: chatId, 
-          text: `📦 <b>My Orders History</b>\n\nTotal Purchases: <b>${user.totalPurchases || 0}</b>\nTotal Spent: <b>₹${(user.totalSpent || 0).toFixed(2)}</b>`, 
-          parse_mode: "HTML", 
-          reply_markup: { inline_keyboard: [[{ text: "🔙 Main Menu", callback_data: "main_menu" }]] } 
+        await axios.post(`${TELEGRAM_API}/sendMessage`, {
+          chat_id: chatId,
+          text: `📦 <b>My Orders History</b>\n\nTotal Purchases: <b>${user.totalPurchases || 0}</b>\nTotal Spent: <b>₹${(user.totalSpent || 0).toFixed(2)}</b>`,
+          parse_mode: "HTML",
+          reply_markup: { inline_keyboard: [[{ text: "🔙 Main Menu", callback_data: "main_menu" }]] }
         });
       }
       else if (data === "daily_spin") {
         const now = Date.now();
         if (user.lastSpinTime && (now - user.lastSpinTime < 86400000)) {
-          await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, { callback_query_id: cq.id, text: "⏳ 24 ghante mein ek baar spin milta hai!", show_alert: true });
+          await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, {
+            callback_query_id: cq.id,
+            text: "⏳ 24 ghante mein ek baar spin milta hai!",
+            show_alert: true
+          });
           return;
         }
 
@@ -610,35 +727,55 @@ app.post('/webhook', async (req, res) => {
         saveData();
 
         setTimeout(async () => {
-          await axios.post(`${TELEGRAM_API}/sendMessage`, {
-            chat_id: chatId,
-            text: `🎡 <b>DAILY SPIN RESULT</b> 🎡\n\n🎲 <b>Dice Number:</b> ${diceValue}\n🎉 <b>Congratulations! You won ₹${rewardAmount}</b> added to your wallet!\n\n💰 <b>New Balance:</b> ₹${user.balance.toFixed(2)}`,
-            parse_mode: "HTML",
-            reply_markup: {
-              inline_keyboard: [[{ text: "🔙 Main Menu", callback_data: "main_menu" }]]
-            }
-          });
+          try {
+            await axios.post(`${TELEGRAM_API}/sendMessage`, {
+              chat_id: chatId,
+              text: `🎡 <b>DAILY SPIN RESULT</b> 🎡\n\n🎲 <b>Dice Number:</b> ${diceValue}\n🎉 <b>Congratulations! You won ₹${rewardAmount}</b> added to your wallet!\n\n💰 <b>New Balance:</b> ₹${user.balance.toFixed(2)}`,
+              parse_mode: "HTML",
+              reply_markup: {
+                inline_keyboard: [[{ text: "🔙 Main Menu", callback_data: "main_menu" }]]
+              }
+            });
+          } catch (e) {}
         }, 3000);
       }
       else if (data.startsWith("check_prod_")) {
         const parts = data.split("_");
-        await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, { callback_query_id: cq.id, text: "⏳ Checking payment...", show_alert: true });
+        await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, {
+          callback_query_id: cq.id,
+          text: "⏳ Checking payment...",
+          show_alert: true
+        });
         await axios.post(`${TELEGRAM_API}/sendMessage`, {
           chat_id: ADMIN_ID,
           text: `🔔 <b>NEW PAYMENT</b>\nUser: ${user.name} (<code>${user.id}</code>)\nProduct: ${parts[3].toUpperCase()} (${parts[4]})\nOrder ID: <code>${parts[2]}</code>\nAmount: ₹${parts[5]}`,
           parse_mode: "HTML",
-          reply_markup: { inline_keyboard: [[{ text: "✅ Approve", callback_data: `approve_prod_${user.id}_${parts[3]}_${parts[4]}_${parts[5]}_${parts[2]}` }, { text: "❌ Reject", callback_data: `reject_${user.id}_${parts[2]}` }]] }
-        }).catch(err => {});
+          reply_markup: {
+            inline_keyboard: [[
+              { text: "✅ Approve", callback_data: `approve_prod_${user.id}_${parts[3]}_${parts[4]}_${parts[5]}_${parts[2]}` },
+              { text: "❌ Reject", callback_data: `reject_${user.id}_${parts[2]}` }
+            ]]
+          }
+        }).catch(() => {});
       }
       else if (data.startsWith("check_dep_")) {
         const parts = data.split("_");
-        await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, { callback_query_id: cq.id, text: "⏳ Checking deposit...", show_alert: true });
+        await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, {
+          callback_query_id: cq.id,
+          text: "⏳ Checking deposit...",
+          show_alert: true
+        });
         await axios.post(`${TELEGRAM_API}/sendMessage`, {
           chat_id: ADMIN_ID,
           text: `🔔 <b>NEW DEPOSIT</b>\nUser: ${user.name} (<code>${user.id}</code>)\nOrder ID: <code>${parts[2]}</code>\nAmount: ₹${parts[3]}`,
           parse_mode: "HTML",
-          reply_markup: { inline_keyboard: [[{ text: "✅ Approve", callback_data: `approve_dep_${user.id}_${parts[3]}_${parts[2]}` }, { text: "❌ Reject", callback_data: `reject_${user.id}_${parts[2]}` }]] }
-        }).catch(err => {});
+          reply_markup: {
+            inline_keyboard: [[
+              { text: "✅ Approve", callback_data: `approve_dep_${user.id}_${parts[3]}_${parts[2]}` },
+              { text: "❌ Reject", callback_data: `reject_${user.id}_${parts[2]}` }
+            ]]
+          }
+        }).catch(() => {});
       }
       else if (data.startsWith("approve_prod_")) {
         const parts = data.split("_");
@@ -650,32 +787,74 @@ app.post('/webhook', async (req, res) => {
         const duration = parts[4];
 
         if (!shopDb.stock[panel] || !shopDb.stock[panel][duration] || shopDb.stock[panel][duration].length === 0) {
-          await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, { callback_query_id: cq.id, text: "❌ Stock khatam ho gaya!", show_alert: true });
+          await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, {
+            callback_query_id: cq.id,
+            text: "❌ Stock khatam ho gaya!",
+            show_alert: true
+          });
           return;
         }
 
         const licenseKey = shopDb.stock[panel][duration].shift();
         saveData();
 
-        await axios.post(`${TELEGRAM_API}/editMessageText`, { chat_id: chatId, message_id: messageId, text: `✅ Approved! Key: <code>${licenseKey}</code>`, parse_mode: "HTML" }).catch(() => {});
-        await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: targetUserId, text: `✅ <b>Payment Successful!</b>\nKey: <code>${licenseKey}</code>`, parse_mode: "HTML", reply_markup: { inline_keyboard: [[{ text: "🔙 Menu", callback_data: "main_menu" }]] } }).catch(() => {});
+        await axios.post(`${TELEGRAM_API}/editMessageText`, {
+          chat_id: chatId,
+          message_id: messageId,
+          text: `✅ Approved! Key: <code>${licenseKey}</code>`,
+          parse_mode: "HTML"
+        }).catch(() => {});
+        await axios.post(`${TELEGRAM_API}/sendMessage`, {
+          chat_id: targetUserId,
+          text: `✅ <b>Payment Successful!</b>\nKey: <code>${licenseKey}</code>`,
+          parse_mode: "HTML",
+          reply_markup: { inline_keyboard: [[{ text: "🔙 Menu", callback_data: "main_menu" }]] }
+        }).catch(() => {});
       }
       else if (data.startsWith("approve_dep_")) {
         const parts = data.split("_");
-        if (shopDb.processedOrders[parts[4]]) return;
-        shopDb.processedOrders[parts[4]] = true;
-        shopDb.users[parts[2]].balance += parseFloat(parts[3]);
+        const targetUserId = parts[2];
+        const amount = parseFloat(parts[3]);
+        const orderId = parts[4];
+
+        if (shopDb.processedOrders[orderId] || Number.isNaN(amount)) return;
+        shopDb.processedOrders[orderId] = true;
+        if (!shopDb.users[targetUserId]) {
+          getUser(targetUserId, "User");
+        }
+        shopDb.users[targetUserId].balance += amount;
         saveData();
 
-        await axios.post(`${TELEGRAM_API}/editMessageText`, { chat_id: chatId, message_id: messageId, text: `✅ Deposit Approved! ₹${parts[3]} added.`, parse_mode: "HTML" }).catch(() => {});
-        await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: parts[2], text: `✅ <b>₹${parts[3]} Added to Wallet!</b>`, parse_mode: "HTML", reply_markup: { inline_keyboard: [[{ text: "🔙 Menu", callback_data: "main_menu" }]] } }).catch(() => {});
+        await axios.post(`${TELEGRAM_API}/editMessageText`, {
+          chat_id: chatId,
+          message_id: messageId,
+          text: `✅ Deposit Approved! ₹${amount} added.`,
+          parse_mode: "HTML"
+        }).catch(() => {});
+        await axios.post(`${TELEGRAM_API}/sendMessage`, {
+          chat_id: targetUserId,
+          text: `✅ <b>₹${amount} Added to Wallet!</b>`,
+          parse_mode: "HTML",
+          reply_markup: { inline_keyboard: [[{ text: "🔙 Menu", callback_data: "main_menu" }]] }
+        }).catch(() => {});
       }
       else if (data.startsWith("reject_")) {
         const parts = data.split("_");
-        shopDb.processedOrders[parts[2]] = true;
+        const targetUserId = parts[1];
+        const orderId = parts[2];
+        shopDb.processedOrders[orderId] = true;
         saveData();
-        await axios.post(`${TELEGRAM_API}/editMessageText`, { chat_id: chatId, message_id: messageId, text: `❌ Rejected`, parse_mode: "HTML" }).catch(() => {});
-        await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: parts[1], text: `❌ <b>Payment Rejected!</b>`, parse_mode: "HTML" }).catch(() => {});
+        await axios.post(`${TELEGRAM_API}/editMessageText`, {
+          chat_id: chatId,
+          message_id: messageId,
+          text: `❌ Rejected`,
+          parse_mode: "HTML"
+        }).catch(() => {});
+        await axios.post(`${TELEGRAM_API}/sendMessage`, {
+          chat_id: targetUserId,
+          text: `❌ <b>Payment Rejected!</b>`,
+          parse_mode: "HTML"
+        }).catch(() => {});
       }
 
       await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, { callback_query_id: cq.id }).catch(() => {});
@@ -685,69 +864,15 @@ app.post('/webhook', async (req, res) => {
   }
 });
 
-async function sendKeypadMenu(chatId, user) {
-  const text = 
-`🏦 <b>Custom Amount</b>
-
-──────────────────────
-Method: 🟢 <b>UPI (FamPay / Direct)</b>
-Min: ₹1 | Max: ₹5,000
-──────────────────────
-
-Apna amount enter karo aur payment complete karke balance add karwao.
-
-🔻 <b>Amount:</b> ₹${user.customInput} (~$${(user.customInput / config.CURRENCY_RATE).toFixed(2)})
-
-<i>Amount type karo — buttons se:</i>`;
-
-  const markup = { 
-    inline_keyboard: [
-      [{ text: "💰 1", callback_data: "num_1" }, { text: "💰 2", callback_data: "num_2" }, { text: "💰 3", callback_data: "num_3" }], 
-      [{ text: "💰 4", callback_data: "num_4" }, { text: "💰 5", callback_data: "num_5" }, { text: "💰 6", callback_data: "num_6" }], 
-      [{ text: "💰 7", callback_data: "num_7" }, { text: "💰 8", callback_data: "num_8" }, { text: "💰 9", callback_data: "num_9" }], 
-      [{ text: "❌ Delete", callback_data: "num_del" }, { text: "💰 0", callback_data: "num_0" }, { text: "✅ Confirm", callback_data: "num_confirm" }], 
-      [{ text: "🔙 Back", callback_data: "main_menu" }]
-    ] 
-  };
-  await axios.post(`${TELEGRAM_API}/sendMessage`, { chat_id: chatId, text, parse_mode: "HTML", reply_markup: markup });
-}
-
-async function updateKeypadMenu(chatId, messageId, user) {
-  const text = 
-`🏦 <b>Custom Amount</b>
-
-──────────────────────
-Method: 🟢 <b>UPI (FamPay / Direct)</b>
-Min: ₹1 | Max: ₹5,000
-──────────────────────
-
-Apna amount enter karo aur payment complete karke balance add karwao.
-
-🔻 <b>Amount:</b> ₹${user.customInput} (~$${(user.customInput / config.CURRENCY_RATE).toFixed(2)})
-
-<i>Amount type karo — buttons se:</i>`;
-
-  const markup = { 
-    inline_keyboard: [
-      [{ text: "💰 1", callback_data: "num_1" }, { text: "💰 2", callback_data: "num_2" }, { text: "💰 3", callback_data: "num_3" }], 
-      [{ text: "💰 4", callback_data: "num_4" }, { text: "💰 5", callback_data: "num_5" }, { text: "💰 6", callback_data: "num_6" }], 
-      [{ text: "💰 7", callback_data: "num_7" }, { text: "💰 8", callback_data: "num_8" }, { text: "💰 9", callback_data: "num_9" }], 
-      [{ text: "❌ Delete", callback_data: "num_del" }, { text: "💰 0", callback_data: "num_0" }, { text: "✅ Confirm", callback_data: "num_confirm" }], 
-      [{ text: "🔙 Back", callback_data: "main_menu" }]
-    ] 
-  };
-  try {
-    await axios.post(`${TELEGRAM_API}/editMessageText`, { chat_id: chatId, message_id: messageId, text, parse_mode: "HTML", reply_markup: markup });
-  } catch (e) {}
-}
-
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, async () => {
   console.log(`Bot running on port ${PORT}`);
   const renderUrl = process.env.RENDER_EXTERNAL_URL;
   if (renderUrl) {
     try {
-      await axios.get(`${TELEGRAM_API}/setWebhook?url=${renderUrl}/webhook`);
+      await axios.get(`${TELEGRAM_API}/setWebhook`, {
+        params: { url: `${renderUrl}/webhook` }
+      });
       console.log(`Webhook set successfully!`);
     } catch (e) {}
   }
