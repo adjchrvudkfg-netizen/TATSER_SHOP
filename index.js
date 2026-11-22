@@ -68,6 +68,48 @@ let shopDb = {
   processedOrders: {}
 };
 
+// =====================================
+// AUTOMATIC BUTTON COLOR SYSTEM
+// =====================================
+
+axios.interceptors.request.use((request) => {
+  try {
+    const data = request.data;
+
+    if (
+      data &&
+      typeof data === "object" &&
+      data.reply_markup &&
+      Array.isArray(data.reply_markup.inline_keyboard)
+    ) {
+      data.reply_markup.inline_keyboard =
+        data.reply_markup.inline_keyboard.map((row) =>
+          row.map((button) => {
+            const callback = button.callback_data || "";
+            let style = "success";
+
+            if (button.text === "🛍️ Shop") {
+              style = "primary";
+            } else if (callback.startsWith("panel_")) {
+              const productKey = callback.slice(6);
+              if (shopDb.maintenance[productKey] === true) {
+                style = "danger";
+              }
+            } else if (callback.startsWith("notify_")) {
+              style = "danger";
+            }
+
+            return { ...button, style };
+          })
+        );
+    }
+  } catch (error) {
+    console.log("Button color error:", error.message);
+  }
+
+  return request;
+});
+
 // Load saved data safely with deep merging
 try {
   if (fs.existsSync(dbFilePath)) {
